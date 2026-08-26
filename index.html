@@ -103,6 +103,10 @@ If errors appear, a diagnostic box will show at the bottom with the stack trace.
         const ctx = canvas.getContext('2d');
         if(!ctx) throw new Error('2D context not available (getContext returned null)');
 
+        // focus canvas so arrow keys don't scroll the page in some browsers
+        canvas.setAttribute('tabindex', '0');
+        canvas.focus();
+
         const WIDTH = canvas.width;
         const HEIGHT = canvas.height;
         const GRAVITY = 0.9;
@@ -135,6 +139,7 @@ If errors appear, a diagnostic box will show at the bottom with the stack trace.
             this.attackCooldown = 0;
             this.attackDuration = 0;
             this.attackType = null;
+            this.attackHasHit = false; // ensure single hit per attack
             this.stun = 0;
 
             this.controls = controls;
@@ -189,9 +194,11 @@ If errors appear, a diagnostic box will show at the bottom with the stack trace.
             const r = this.rect();
             for (const p of platforms) {
               if (r.x < p.x + p.w && r.x + r.w > p.x && r.y < p.y + p.h && r.y + r.h > p.y) {
+                // If coming down and penetrated platform from above
                 if (this.vy >= 0 && (r.y + r.h) - this.vy <= p.y + p.h) {
                   this.y = p.y; this.vy = 0; this.onGround = true;
                 } else {
+                  // sideways or from below: push out horizontally
                   if (r.x < p.x) this.x = p.x - this.w/2; else this.x = p.x + p.w + this.w/2;
                   this.vx = 0;
                 }
@@ -222,6 +229,7 @@ If errors appear, a diagnostic box will show at the bottom with the stack trace.
               }
 
               this.attackType = type;
+              this.attackHasHit = false; // reset single-hit flag
               // durations/cooldowns tuned per attack
               if (type === 'down') { this.attackDuration = 20; this.attackCooldown = 48; /* removed forced downward velocity for attacker */ }
               else if (type === 'up') { this.attackDuration = 14; this.attackCooldown = 40; }
@@ -297,32 +305,40 @@ If errors appear, a diagnostic box will show at the bottom with the stack trace.
 
         let winner = null; let freeze = 0;
         function restartRound(){
-          player1.x = 200; player1.y = 0; player1.vx = 0; player1.vy = 0; player1.health = player1.maxHealth; player1.stun = 0; player1.jumpsLeft = 2;
-          player2.x = 760; player2.y = 0; player2.vx = 0; player2.vy = 0; player2.health = player2.maxHealth; player2.stun = 0; player2.jumpsLeft = 2;
+          player1.x = 200; player1.y = 0; player1.vx = 0; player1.vy = 0; player1.health = player1.maxHealth; player1.stun = 0; player1.jumpsLeft = 2; player1.attackHasHit = false;
+          player2.x = 760; player2.y = 0; player2.vx = 0; player2.vy = 0; player2.health = player2.maxHealth; player2.stun = 0; player2.jumpsLeft = 2; player2.attackHasHit = false;
           winner = null; freeze = 0;
         }
 
         function applyAttack(attacker, defender, hitbox) {
           if (!hitbox) return;
+          // only apply once per attack activation
+          if (attacker.attackHasHit) return;
+
           const d = defender.rect();
           if (hitbox.x < d.x + d.w && hitbox.x + hitbox.w > d.x && hitbox.y < d.y + d.h && hitbox.y + hitbox.h > d.y) {
-            // hit! nerfed damage, stronger knockback
-            let damage = 4; // default nerfed damage
+            // hit! nerfed damage, stronger knockback but single hit
+            let damage = 3; // further nerfed base damage
             let knock = 18; // default stronger horizontal knock
+            let vely = -6;
 
             if (attacker.attackType === 'down') {
-              damage = 6; knock = 26; defender.vy = 14; // slam defender downward
+              damage = 5; knock = 22; vely = 10; // slam defender downward, but smaller than before
             } else if (attacker.attackType === 'up') {
-              damage = 5; knock = 16; defender.vy = -12;
+              damage = 4; knock = 16; vely = -10;
             } else if (attacker.attackType === 'forward') {
-              damage = 5; knock = 22; defender.vx = attacker.facing * knock; defender.vy = -8;
+              damage = 4; knock = 20; vely = -8;
             } else { // neutral
-              damage = 4; knock = 18; defender.vx = attacker.facing * knock; defender.vy = -6;
+              damage = 3; knock = 18; vely = -6;
             }
 
+            // apply velocities (cap to avoid extreme values)
+            defender.vx = clamp(attacker.facing * knock, -36, 36);
+            defender.vy = clamp(vely, -40, 40);
+
             defender.health = Math.max(0, defender.health - damage);
-            if (attacker.attackType !== 'down') defender.vx = attacker.facing * knock;
             defender.stun = 16;
+            attacker.attackHasHit = true; // prevent multiple hits from same attack
             freeze = 6;
           }
         }
