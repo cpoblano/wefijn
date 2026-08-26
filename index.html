@@ -5,43 +5,73 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Simple 2D Platform Fighter</title>
   <style>
-    html,body{height:100%;margin:0;background:#111;color:#eee;font-family:Arial,Helvetica,sans-serif}
-    #game{display:block;margin:20px auto;border:4px solid #222;background:#88b}
-    .hint{max-width:960px;margin:10px auto;color:#ccc}
-    .controls{display:flex;gap:24px}
-    pre{background:#0b1220;padding:8px;border-radius:6px;color:#9cf}
+    /* Page layout: canvas left, controls right. Hide page scroll to avoid arrow key scrolling issues. */
+    html,body{height:100%;margin:0;background:#111;color:#eee;font-family:Arial,Helvetica,sans-serif;overflow:hidden}
+    .container{display:flex;gap:20px;align-items:flex-start;max-width:1280px;margin:20px auto;padding:0 12px;box-sizing:border-box}
+    #game{flex:0 0 960px;height:540px;border:4px solid #222;background:#15202b;display:block}
+
+    aside.hint{width:320px;box-sizing:border-box;padding:12px;background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(0,0,0,0.02));border-radius:6px;border:1px solid rgba(255,255,255,0.03)}
+    .controls{display:flex;flex-direction:column;gap:16px}
+    .controls > div{background:rgba(255,255,255,0.02);padding:8px;border-radius:6px}
+    pre{background:#0b1220;padding:8px;border-radius:6px;color:#9cf;overflow:auto;margin:0}
 
     /* Diagnostic overlay */
     #diag { position:fixed; left:8px; right:8px; bottom:8px; background:rgba(0,0,0,0.85); color:#f88; padding:12px; border-radius:8px; font-family:monospace; display:none; z-index:9999; max-height:40vh; overflow:auto }
     #diag h3{margin:0 0 8px 0;color:#ffb3b3}
     #diag pre{white-space:pre-wrap;color:#ffc}
+
+    @media (max-width:1100px){
+      /* Small screens: allow page scroll and stack layout */
+      html,body{overflow:auto}
+      .container{flex-direction:column;align-items:center}
+      aside.hint{width:calc(100% - 40px);max-width:480px}
+      #game{flex:0 0 auto}
+    }
   </style>
 </head>
 <body>
-  <canvas id="game" width="960" height="540"></canvas>
-  <div class="hint">
-    <h2>Simple 2D Platform Fighter (Demo)</h2>
-    <div class="controls">
-      <div>
-        <strong>Player 1</strong>
-        <pre>
+  <div class="container">
+    <canvas id="game" width="960" height="540" aria-label="Game canvas"></canvas>
+
+    <aside class="hint" aria-labelledby="demo-title">
+      <h2 id="demo-title">Simple 2D Platform Fighter (Demo)</h2>
+      <div class="controls">
+        <div>
+          <strong>Player 1</strong>
+          <pre>
 Move: A / D
 Jump: W (double jump enabled)
 Attack: S
-        </pre>
-      </div>
-      <div>
-        <strong>Player 2</strong>
-        <pre>
+          </pre>
+        </div>
+
+        <div>
+          <strong>Player 2</strong>
+          <pre>
 Move: ← / →
 Jump: ↑ (double jump enabled)
 Attack: ↓
-        </pre>
+          </pre>
+        </div>
+
+        <div>
+          <strong>Notes</strong>
+          <pre>
+First to reduce opponent to 0 health wins; press R to restart.
+New moves: double jump and aerial attacks — down-air (hit while falling) performs a downward slam.
+Controls are positioned to the side to prevent page scroll when pressing arrow keys.
+          </pre>
+        </div>
+
+        <div>
+          <strong>Troubleshooting</strong>
+          <pre>
+If nothing appears: run a local server (python -m http.server) and open http://localhost:8000
+If errors appear, a diagnostic box will show at the bottom with the stack trace.
+          </pre>
+        </div>
       </div>
-    </div>
-    <p>Open <code>index.html</code> in a browser (or run a local static server) to play. First to reduce opponent to 0 health wins; press R to restart.</p>
-    <p>New moves: double jump and aerial attacks — down-air (hit while falling) performs a downward slam. Try attacking in the air.</p>
-    <p>If you see a diagnostic box at the bottom, it means the game threw an error — please paste the text here and I'll fix it.</p>
+    </aside>
   </div>
 
   <div id="diag" role="alert">
@@ -193,7 +223,7 @@ Attack: ↓
 
               this.attackType = type;
               // durations/cooldowns tuned per attack
-              if (type === 'down') { this.attackDuration = 20; this.attackCooldown = 48; this.vy = 8; /* slam downward */ }
+              if (type === 'down') { this.attackDuration = 20; this.attackCooldown = 48; /* removed forced downward velocity for attacker */ }
               else if (type === 'up') { this.attackDuration = 14; this.attackCooldown = 40; }
               else if (type === 'forward') { this.attackDuration = 14; this.attackCooldown = 36; }
               else { this.attackDuration = 12; this.attackCooldown = 36; }
@@ -238,6 +268,11 @@ Attack: ↓
         const keyMap = {};
         // keydown: track keys and trigger jump/attack pulses
         window.addEventListener('keydown', (e) => {
+          // prevent page scrolling when pressing arrow keys used for controls
+          if (e.code === 'ArrowUp' || e.code === 'ArrowDown' || e.code === 'ArrowLeft' || e.code === 'ArrowRight') {
+            e.preventDefault();
+          }
+
           if (e.code === 'KeyR') restartRound();
           if (!keyMap[e.code]) { // only trigger on initial press
             // trigger jump for matching players
@@ -271,18 +306,22 @@ Attack: ↓
           if (!hitbox) return;
           const d = defender.rect();
           if (hitbox.x < d.x + d.w && hitbox.x + hitbox.w > d.x && hitbox.y < d.y + d.h && hitbox.y + hitbox.h > d.y) {
-            // hit!
-            let damage = 8;
-            let knock = 6;
-            if (attacker.attackType === 'down') { damage = 14; knock = 10; defender.vy = 10; }
-            else if (attacker.attackType === 'up') { damage = 10; defender.vy = -8; }
-            else if (attacker.attackType === 'forward') { damage = 11; knock = 9; defender.vx = attacker.facing * knock; defender.vy = -6; }
-            else { damage = 9; defender.vx = attacker.facing * knock; defender.vy = -6; }
+            // hit! nerfed damage, stronger knockback
+            let damage = 4; // default nerfed damage
+            let knock = 18; // default stronger horizontal knock
+
+            if (attacker.attackType === 'down') {
+              damage = 6; knock = 26; defender.vy = 14; // slam defender downward
+            } else if (attacker.attackType === 'up') {
+              damage = 5; knock = 16; defender.vy = -12;
+            } else if (attacker.attackType === 'forward') {
+              damage = 5; knock = 22; defender.vx = attacker.facing * knock; defender.vy = -8;
+            } else { // neutral
+              damage = 4; knock = 18; defender.vx = attacker.facing * knock; defender.vy = -6;
+            }
 
             defender.health = Math.max(0, defender.health - damage);
-            if (attacker.attackType !== 'down') {
-              defender.vx = attacker.facing * knock;
-            }
+            if (attacker.attackType !== 'down') defender.vx = attacker.facing * knock;
             defender.stun = 16;
             freeze = 6;
           }
@@ -329,8 +368,8 @@ Attack: ↓
             ctx.strokeStyle = '#222'; ctx.strokeRect(barX, 16, 200, 16);
             ctx.fillStyle = '#fff'; ctx.font = '12px sans-serif'; ctx.fillText('P' + (players.indexOf(p)+1) + ' HP: ' + p.health, barX + 4, 20);
 
-            // draw jumps left indicator
-            ctx.fillStyle = '#fff'; ctx.font = '11px monospace'; ctx.fillText('Jumps: ' + p.jumpsLeft, r.x, r.y - 8);
+            // draw jumps left indicator and current attack type
+            ctx.fillStyle = '#fff'; ctx.font = '11px monospace'; ctx.fillText('Jumps: ' + p.jumpsLeft + '  ATK:' + (p.attackType||'-'), r.x, r.y - 8);
           }
 
           if (winner !== null){ ctx.fillStyle = '#fff'; ctx.font = '36px sans-serif'; let t = 'Draw!'; if (winner === 1) t = 'Player 1 Wins!'; else if (winner === 2) t = 'Player 2 Wins!'; ctx.fillText(t, WIDTH/2 - ctx.measureText(t).width/2, HEIGHT/2 - 6); ctx.font = '16px sans-serif'; const s = 'Press R to restart'; ctx.fillText(s, WIDTH/2 - ctx.measureText(s).width/2, HEIGHT/2 + 26); }
