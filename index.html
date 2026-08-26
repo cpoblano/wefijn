@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Simple 2D Platform Fighter</title>
+  <style>
+    html,body{height:100%;margin:0;background:#111;color:#eee;font-family:Arial,Helvetica,sans-serif}
+    #game{display:block;margin:20px auto;border:4px solid #222;background:#88b}
+    .hint{max-width:960px;margin:10px auto;color:#ccc}
+    .controls{display:flex;gap:24px}
+    pre{background:#0b1220;padding:8px;border-radius:6px;color:#9cf}
+  </style>
+</head>
+<body>
+  <canvas id="game" width="960" height="540"></canvas>
+  <div class="hint">
+    <h2>Simple 2D Platform Fighter (Demo)</h2>
+    <div class="controls">
+      <div>
+        <strong>Player 1</strong>
+        <pre>
+Move: A / D
+Jump: W
+Attack: S
+        </pre>
+      </div>
+      <div>
+        <strong>Player 2</strong>
+        <pre>
+Move: ← / →
+Jump: ↑
+Attack: ↓
+        </pre>
+      </div>
+    </div>
+    <p>Open <code>index.html</code> in a browser (or run a local static server) to play. First to reduce opponent to 0 health wins; press R to restart.</p>
+  </div>
+
+  <script src="src/game.js"></script>
+</body>
+</html>
