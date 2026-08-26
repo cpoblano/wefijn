@@ -26,7 +26,7 @@
         <strong>Player 1</strong>
         <pre>
 Move: A / D
-Jump: W
+Jump: W (double jump enabled)
 Attack: S
         </pre>
       </div>
@@ -34,12 +34,13 @@ Attack: S
         <strong>Player 2</strong>
         <pre>
 Move: ← / →
-Jump: ↑
+Jump: ↑ (double jump enabled)
 Attack: ↓
         </pre>
       </div>
     </div>
     <p>Open <code>index.html</code> in a browser (or run a local static server) to play. First to reduce opponent to 0 health wins; press R to restart.</p>
+    <p>New moves: double jump and aerial attacks — down-air (hit while falling) performs a downward slam. Try attacking in the air.</p>
     <p>If you see a diagnostic box at the bottom, it means the game threw an error — please paste the text here and I'll fix it.</p>
   </div>
 
@@ -103,15 +104,34 @@ Attack: ↓
 
             this.attackCooldown = 0;
             this.attackDuration = 0;
+            this.attackType = null;
             this.stun = 0;
 
             this.controls = controls;
             this.input = { left: false, right: false, up: false, attack: false };
 
             this.score = 0;
+
+            // Double jump state
+            this.jumpsLeft = 2; // allows one double-jump in air
           }
 
           rect() { return { x: this.x - this.w/2, y: this.y - this.h, w: this.w, h: this.h }; }
+
+          land() { this.onGround = true; this.jumpsLeft = 2; }
+
+          jump() {
+            if (this.stun) return;
+            if (this.onGround) {
+              this.vy = -18;
+              this.onGround = false;
+              this.jumpsLeft = 1; // consumed one jump, allow one more in air
+            } else if (this.jumpsLeft > 0) {
+              // double jump
+              this.vy = -16; // slightly weaker than ground jump
+              this.jumpsLeft -= 1;
+            }
+          }
 
           update() {
             if (this.stun > 0) this.stun--;
@@ -121,17 +141,20 @@ Attack: ↓
               else this.vx *= FRICTION;
             } else { this.vx *= 0.95; }
 
-            if (this.input.up && this.onGround && !this.stun) { this.vy = -18; this.onGround = false; }
-
+            // Gravity
             this.vy += GRAVITY;
-            this.vy = clamp(this.vy, -30, 30);
+            this.vy = clamp(this.vy, -30, 40);
 
+            // Position
             this.x += this.vx;
             this.y += this.vy;
 
+            // World bounds
             this.x = clamp(this.x, this.w/2, WIDTH - this.w/2);
             if (this.y > HEIGHT + 200) { this.health = 0; }
 
+            // Platform collisions
+            const prevOnGround = this.onGround;
             this.onGround = false;
             const r = this.rect();
             for (const p of platforms) {
@@ -145,18 +168,64 @@ Attack: ↓
               }
             }
 
+            if (this.onGround && !prevOnGround) {
+              this.land();
+            }
+
             if (this.attackCooldown > 0) this.attackCooldown--;
             if (this.attackDuration > 0) this.attackDuration--;
+            if (this.attackDuration === 0) this.attackType = null;
           }
 
-          startAttack() { if (this.attackCooldown === 0 && this.attackDuration === 0 && !this.stun) { this.attackDuration = 12; this.attackCooldown = 36; } }
+          startAttack() {
+            if (this.attackCooldown === 0 && this.attackDuration === 0 && !this.stun) {
+              // choose attack type based on state
+              let type = 'neutral';
+              if (!this.onGround) {
+                if (this.vy > 3) type = 'down';
+                else if (this.vy < -2) type = 'up';
+                else if (Math.abs(this.vx) > 1) type = 'forward';
+                else type = 'neutral';
+              } else {
+                if (this.input.left || this.input.right) type = 'forward';
+                else type = 'neutral';
+              }
+
+              this.attackType = type;
+              // durations/cooldowns tuned per attack
+              if (type === 'down') { this.attackDuration = 20; this.attackCooldown = 48; this.vy = 8; /* slam downward */ }
+              else if (type === 'up') { this.attackDuration = 14; this.attackCooldown = 40; }
+              else if (type === 'forward') { this.attackDuration = 14; this.attackCooldown = 36; }
+              else { this.attackDuration = 12; this.attackCooldown = 36; }
+            }
+          }
 
           getAttackHitbox() {
-            if (this.attackDuration > 0) {
-              const offset = 10; const w = 38; const h = 28;
-              const hx = this.x + this.facing * (this.w/2 + offset);
-              const hy = this.y - this.h/2;
-              return { x: hx - w/2, y: hy - h/2, w, h };
+            if (this.attackDuration > 0 && this.attackType) {
+              const offset = 10;
+              if (this.attackType === 'down') {
+                // big hitbox under the player
+                const w = 48; const h = 40;
+                const hx = this.x;
+                const hy = this.y + 6; // slightly below feet
+                return { x: hx - w/2, y: hy - h/2, w, h };
+              } else if (this.attackType === 'up') {
+                const w = 36; const h = 40;
+                const hx = this.x;
+                const hy = this.y - this.h - 10;
+                return { x: hx - w/2, y: hy - h/2, w, h };
+              } else if (this.attackType === 'forward') {
+                const w = 44; const h = 28;
+                const hx = this.x + this.facing * (this.w/2 + offset + w/2);
+                const hy = this.y - this.h/2;
+                return { x: hx - w/2, y: hy - h/2, w, h };
+              } else {
+                // neutral
+                const w = 38; const h = 28;
+                const hx = this.x + this.facing * (this.w/2 + offset);
+                const hy = this.y - this.h/2;
+                return { x: hx - w/2, y: hy - h/2, w, h };
+              }
             }
             return null;
           }
@@ -167,23 +236,105 @@ Attack: ↓
         const players = [player1, player2];
 
         const keyMap = {};
-        window.addEventListener('keydown', (e) => { if (e.code === 'KeyR') restartRound(); keyMap[e.code] = true; updateInputsFromKeys(); });
+        // keydown: track keys and trigger jump/attack pulses
+        window.addEventListener('keydown', (e) => {
+          if (e.code === 'KeyR') restartRound();
+          if (!keyMap[e.code]) { // only trigger on initial press
+            // trigger jump for matching players
+            if (e.code === player1.controls.up) player1.jump();
+            if (e.code === player2.controls.up) player2.jump();
+            // trigger attack
+            if (e.code === player1.controls.attack) player1.startAttack();
+            if (e.code === player2.controls.attack) player2.startAttack();
+          }
+          keyMap[e.code] = true;
+          updateInputsFromKeys();
+        });
         window.addEventListener('keyup', (e) => { keyMap[e.code] = false; updateInputsFromKeys(); });
 
-        function updateInputsFromKeys(){ for (const p of players) { p.input.left = !!keyMap[p.controls.left]; p.input.right = !!keyMap[p.controls.right]; p.input.up = !!keyMap[p.controls.up]; } }
-        window.addEventListener('keydown', (e) => { if (e.code === player1.controls.attack) player1.startAttack(); if (e.code === player2.controls.attack) player2.startAttack(); });
+        function updateInputsFromKeys(){
+          for (const p of players) {
+            p.input.left = !!keyMap[p.controls.left];
+            p.input.right = !!keyMap[p.controls.right];
+            // p.input.up left for legacy; jumps are handled on keydown
+          }
+        }
 
         let winner = null; let freeze = 0;
-        function restartRound(){ player1.x = 200; player1.y = 0; player1.vx = 0; player1.vy = 0; player1.health = player1.maxHealth; player1.stun = 0; player2.x = 760; player2.y = 0; player2.vx = 0; player2.vy = 0; player2.health = player2.maxHealth; player2.stun = 0; winner = null; freeze = 0; }
+        function restartRound(){
+          player1.x = 200; player1.y = 0; player1.vx = 0; player1.vy = 0; player1.health = player1.maxHealth; player1.stun = 0; player1.jumpsLeft = 2;
+          player2.x = 760; player2.y = 0; player2.vx = 0; player2.vy = 0; player2.health = player2.maxHealth; player2.stun = 0; player2.jumpsLeft = 2;
+          winner = null; freeze = 0;
+        }
 
-        function applyAttack(attacker, defender, hitbox){ if(!hitbox) return; const d = defender.rect(); if (hitbox.x < d.x + d.w && hitbox.x + hitbox.w > d.x && hitbox.y < d.y + d.h && hitbox.y + hitbox.h > d.y) { const damage = 10; defender.health = Math.max(0, defender.health - damage); const knock = 8 + (100 - defender.health) / 12; defender.vx = attacker.facing * knock; defender.vy = -6; defender.stun = 16; freeze = 6; } }
+        function applyAttack(attacker, defender, hitbox) {
+          if (!hitbox) return;
+          const d = defender.rect();
+          if (hitbox.x < d.x + d.w && hitbox.x + hitbox.w > d.x && hitbox.y < d.y + d.h && hitbox.y + hitbox.h > d.y) {
+            // hit!
+            let damage = 8;
+            let knock = 6;
+            if (attacker.attackType === 'down') { damage = 14; knock = 10; defender.vy = 10; }
+            else if (attacker.attackType === 'up') { damage = 10; defender.vy = -8; }
+            else if (attacker.attackType === 'forward') { damage = 11; knock = 9; defender.vx = attacker.facing * knock; defender.vy = -6; }
+            else { damage = 9; defender.vx = attacker.facing * knock; defender.vy = -6; }
 
-        function update(){ if (freeze > 0) { freeze--; return; } for (const p of players) p.update(); const hb1 = player1.getAttackHitbox(); const hb2 = player2.getAttackHitbox(); applyAttack(player1, player2, hb1); applyAttack(player2, player1, hb2); if (player1.health <= 0 && player2.health > 0) { winner = 2; player2.score++; } else if (player2.health <= 0 && player1.health > 0) { winner = 1; player1.score++; } else if (player1.health <= 0 && player2.health <= 0) { winner = 0; } }
+            defender.health = Math.max(0, defender.health - damage);
+            if (attacker.attackType !== 'down') {
+              defender.vx = attacker.facing * knock;
+            }
+            defender.stun = 16;
+            freeze = 6;
+          }
+        }
+
+        function update() {
+          if (freeze > 0) { freeze--; return; }
+          for (const p of players) p.update();
+          const hb1 = player1.getAttackHitbox();
+          const hb2 = player2.getAttackHitbox();
+          applyAttack(player1, player2, hb1);
+          applyAttack(player2, player1, hb2);
+
+          if (player1.health <= 0 && player2.health > 0) { winner = 2; player2.score++; }
+          else if (player2.health <= 0 && player1.health > 0) { winner = 1; player1.score++; }
+          else if (player1.health <= 0 && player2.health <= 0) { winner = 0; }
+        }
 
         function drawRect(r, color){ ctx.fillStyle = color; ctx.fillRect(r.x, r.y, r.w, r.h); }
-        function draw(){ ctx.clearRect(0,0,WIDTH,HEIGHT); ctx.fillStyle = '#15202b'; ctx.fillRect(0,0,WIDTH,HEIGHT); for (const p of platforms){ drawRect(p, '#37474f'); ctx.fillStyle = '#4b5b66'; ctx.fillRect(p.x, p.y, p.w, 4); }
-          for (const p of players){ const r = p.rect(); ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(r.x + 6, r.y + r.h + 4, r.w, 8); ctx.fillStyle = p.color; ctx.fillRect(r.x, r.y, r.w, r.h); ctx.fillStyle = '#111'; const eyeX = r.x + (p.facing === 1 ? r.w * 0.65 : r.w * 0.35); ctx.fillRect(eyeX - 6, r.y + 12, 8, 8); const hb = p.getAttackHitbox(); if (hb) { ctx.fillStyle = 'rgba(255,255,0,0.35)'; ctx.fillRect(hb.x, hb.y, hb.w, hb.h); } const barX = (p === player1) ? 24 : WIDTH - 224; ctx.fillStyle = '#000'; ctx.fillRect(barX, 16, 200, 16); ctx.fillStyle = '#d32f2f'; ctx.fillRect(barX + 2, 18, (196 * p.health / p.maxHealth), 12); ctx.strokeStyle = '#222'; ctx.strokeRect(barX, 16, 200, 16); ctx.fillStyle = '#fff'; ctx.font = '12px sans-serif'; ctx.fillText('P' + (players.indexOf(p)+1) + ' HP: ' + p.health, barX + 4, 20); }
+        function draw(){
+          ctx.clearRect(0,0,WIDTH,HEIGHT);
+          ctx.fillStyle = '#15202b'; ctx.fillRect(0,0,WIDTH,HEIGHT);
+          for (const p of platforms){ drawRect(p, '#37474f'); ctx.fillStyle = '#4b5b66'; ctx.fillRect(p.x, p.y, p.w, 4); }
+
+          for (const p of players){
+            const r = p.rect();
+            ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(r.x + 6, r.y + r.h + 4, r.w, 8);
+            ctx.fillStyle = p.color; ctx.fillRect(r.x, r.y, r.w, r.h);
+            ctx.fillStyle = '#111'; const eyeX = r.x + (p.facing === 1 ? r.w * 0.65 : r.w * 0.35); ctx.fillRect(eyeX - 6, r.y + 12, 8, 8);
+
+            // draw attack hitbox
+            const hb = p.getAttackHitbox();
+            if (hb) {
+              if (p.attackType === 'down') ctx.fillStyle = 'rgba(255,0,80,0.45)';
+              else if (p.attackType === 'up') ctx.fillStyle = 'rgba(120,255,120,0.35)';
+              else ctx.fillStyle = 'rgba(255,255,0,0.35)';
+              ctx.fillRect(hb.x, hb.y, hb.w, hb.h);
+            }
+
+            // health bar
+            const barX = (p === player1) ? 24 : WIDTH - 224;
+            ctx.fillStyle = '#000'; ctx.fillRect(barX, 16, 200, 16);
+            ctx.fillStyle = '#d32f2f'; ctx.fillRect(barX + 2, 18, (196 * p.health / p.maxHealth), 12);
+            ctx.strokeStyle = '#222'; ctx.strokeRect(barX, 16, 200, 16);
+            ctx.fillStyle = '#fff'; ctx.font = '12px sans-serif'; ctx.fillText('P' + (players.indexOf(p)+1) + ' HP: ' + p.health, barX + 4, 20);
+
+            // draw jumps left indicator
+            ctx.fillStyle = '#fff'; ctx.font = '11px monospace'; ctx.fillText('Jumps: ' + p.jumpsLeft, r.x, r.y - 8);
+          }
+
           if (winner !== null){ ctx.fillStyle = '#fff'; ctx.font = '36px sans-serif'; let t = 'Draw!'; if (winner === 1) t = 'Player 1 Wins!'; else if (winner === 2) t = 'Player 2 Wins!'; ctx.fillText(t, WIDTH/2 - ctx.measureText(t).width/2, HEIGHT/2 - 6); ctx.font = '16px sans-serif'; const s = 'Press R to restart'; ctx.fillText(s, WIDTH/2 - ctx.measureText(s).width/2, HEIGHT/2 + 26); }
+
           ctx.fillStyle = '#fff'; ctx.font = '14px sans-serif'; ctx.fillText('Score P1: ' + player1.score, 24, HEIGHT - 16); ctx.fillText('Score P2: ' + player2.score, WIDTH - 120, HEIGHT - 16);
         }
 
