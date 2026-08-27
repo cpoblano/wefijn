@@ -3,34 +3,46 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>DebuggerPF</title>
+  <title>Simple 2D Platform Fighter</title>
   <style>
-    /* Page layout: canvas left, controls right. Hide page scroll to avoid arrow key scrolling issues. */
-    html,body{height:100%;margin:0;background:#111;color:#eee;font-family:Arial,Helvetica,sans-serif;overflow:hidden}
-    .container{display:flex;gap:20px;align-items:flex-start;max-width:1280px;margin:20px auto;padding:0 12px;box-sizing:border-box}
-    #game{flex:0 0 960px;height:540px;border:4px solid #222;background:#15202b;display:block}
+    html,body{height:100%;margin:0;background:#111;color:#eee;font-family:Arial,Helvetica,sans-serif}
+    .wrap{max-width:1280px;margin:12px auto;display:flex;gap:20px;align-items:flex-start;justify-content:center}
+    #game{display:block;border:4px solid #222;background:#15202b}
 
     aside.hint{width:320px;box-sizing:border-box;padding:12px;background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(0,0,0,0.02));border-radius:6px;border:1px solid rgba(255,255,255,0.03)}
     .controls{display:flex;flex-direction:column;gap:16px}
     .controls > div{background:rgba(255,255,255,0.02);padding:8px;border-radius:6px}
     pre{background:#0b1220;padding:8px;border-radius:6px;color:#9cf;overflow:auto;margin:0}
 
+    /* Fullscreen menu overlay */
+    #menuOverlay{position:fixed;left:0;top:0;right:0;bottom:0;background:rgba(0,0,0,0.8);display:flex;align-items:center;justify-content:center;z-index:999}
+    .menu{width:820px;max-width:95%;background:#0e1620;border-radius:8px;padding:18px;border:1px solid #263238}
+    .menu h2{margin:0 0 12px 0}
+    .menu .row{display:flex;gap:12px}
+    .menu .col{flex:1}
+    .btn{display:inline-block;padding:8px 12px;background:#1e88e5;color:#fff;border-radius:6px;cursor:pointer;border:0}
+    .btn.ghost{background:transparent;border:1px solid #556}
+    .charList{display:flex;gap:8px;flex-wrap:wrap}
+    .char{padding:10px;border-radius:6px;background:#122;cursor:pointer;border:1px solid #333}
+    .char.selected{outline:2px solid #4caf50}
+
+    .readyBox{display:flex;gap:8px;align-items:center}
+    .countdown{font-size:48px;text-align:center;margin:8px 0}
+
+    /* small screens stack */
+    @media (max-width:900px){
+      .wrap{flex-direction:column;align-items:center}
+      aside.hint{width:calc(100% - 40px)}
+    }
+
     /* Diagnostic overlay */
-    #diag { position:fixed; left:8px; right:8px; bottom:8px; background:rgba(0,0,0,0.85); color:#f88; padding:12px; border-radius:8px; font-family:monospace; display:none; z-index:9999; max-height:40vh; overflow:auto }
+    #diag { position:fixed; left:8px; right:8px; bottom:8px; background:rgba(0,0,0,0.85); color:#f88; padding:12px; border-radius:8px; font-family:monospace; display:none; z-index:1000; max-height:40vh; overflow:auto }
     #diag h3{margin:0 0 8px 0;color:#ffb3b3}
     #diag pre{white-space:pre-wrap;color:#ffc}
-
-    @media (max-width:1100px){
-      /* Small screens: allow page scroll and stack layout */
-      html,body{overflow:auto}
-      .container{flex-direction:column;align-items:center}
-      aside.hint{width:calc(100% - 40px);max-width:480px}
-      #game{flex:0 0 auto}
-    }
   </style>
 </head>
 <body>
-  <div class="container">
+  <div class="wrap">
     <canvas id="game" width="960" height="540" aria-label="Game canvas"></canvas>
 
     <aside class="hint" aria-labelledby="demo-title">
@@ -57,21 +69,58 @@ Attack: ↓
         <div>
           <strong>Notes</strong>
           <pre>
-First to reduce opponent to 0 health wins; press R to restart.
-New moves: double jump and aerial attacks — down-air (hit while falling) performs a downward slam.
-Controls are positioned to the side to prevent page scroll when pressing arrow keys.
-          </pre>
-        </div>
-
-        <div>
-          <strong>Troubleshooting</strong>
-          <pre>
-If nothing appears: run a local server (python -m http.server) and open http://localhost:8000
-If errors appear, a diagnostic box will show at the bottom with the stack trace.
+Press Start → choose characters → Ready up. When both players ready a 3 second countdown starts and the match begins.
+More characters will be added later.
           </pre>
         </div>
       </div>
     </aside>
+  </div>
+
+  <div id="menuOverlay" role="dialog" aria-modal="true">
+    <div class="menu" id="menu">
+      <div id="startScreen">
+        <h2>Welcome</h2>
+        <p>Press Start to begin</p>
+        <div><button id="btnStart" class="btn">Start</button></div>
+      </div>
+
+      <div id="charSelect" style="display:none">
+        <h2>Character Select</h2>
+        <div class="row">
+          <div class="col">
+            <h3>Player 1</h3>
+            <div id="charsP1" class="charList"></div>
+            <div style="margin-top:8px">Selected: <span id="selP1">Default</span></div>
+          </div>
+          <div class="col">
+            <h3>Player 2</h3>
+            <div id="charsP2" class="charList"></div>
+            <div style="margin-top:8px">Selected: <span id="selP2">Default</span></div>
+          </div>
+        </div>
+        <div style="margin-top:12px">
+          <button id="btnToReady" class="btn">Ready</button>
+          <button id="btnBackToStart" class="btn ghost">Back</button>
+        </div>
+      </div>
+
+      <div id="readyScreen" style="display:none">
+        <h2>Ready Up</h2>
+        <div class="row" style="margin-bottom:12px">
+          <div class="col readyBox">
+            <div>Player 1</div>
+            <button id="readyP1" class="btn ghost">Not Ready</button>
+          </div>
+          <div class="col readyBox">
+            <div>Player 2</div>
+            <button id="readyP2" class="btn ghost">Not Ready</button>
+          </div>
+        </div>
+        <div class="countdown" id="countdown" style="display:none">3</div>
+        <div><button id="btnBackToChars" class="btn ghost">Back</button></div>
+      </div>
+    </div>
   </div>
 
   <div id="diag" role="alert">
@@ -84,355 +133,133 @@ If errors appear, a diagnostic box will show at the bottom with the stack trace.
   </noscript>
 
   <script>
-    // Initialization guard + inline game with diagnostics.
-    if (window.__wefijn_game_loaded) {
-      console.warn('Game already loaded, skipping duplicate initialization.');
-    } else {
-      window.__wefijn_game_loaded = true;
+    (function(){
+      function showError(err){ try{ var diag=document.getElementById('diag'); var t=document.getElementById('diag-text'); t.textContent=(err&&err.stack)?(''+err.stack):(''+err); diag.style.display='block'; console.error(err);}catch(e){console.error(e);} }
+      try{
+        console.log('Inline game.js loading');
+        const canvas = document.getElementById('game'); if(!canvas) throw new Error('Canvas element #game not found');
+        const ctx = canvas.getContext('2d'); if(!ctx) throw new Error('2D context not available');
 
-      (function(){
-        function showError(err){
-          try{
-            var diag = document.getElementById('diag');
-            var t = document.getElementById('diag-text');
-            t.textContent = (err && err.stack) ? (''+err.stack) : (''+err);
-            diag.style.display = 'block';
-            console.error('Platform fighter error:', err);
-          }catch(e){ console.error('Failed to show diagnostic overlay', e); }
+        const WIDTH = canvas.width, HEIGHT = canvas.height;
+        const GRAVITY = 0.9, FRICTION = 0.85;
+
+        const platforms = [ { x: 0, y: HEIGHT - 40, w: WIDTH, h: 40 }, { x: 240, y: 360, w: 200, h: 18 }, { x: 580, y: 300, w: 180, h: 18 } ];
+        function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+
+        // --- Menu / Match flow state ---
+        let matchActive = false; // when true, game updates and input affect players
+        const overlay = document.getElementById('menuOverlay');
+        const startScreen = document.getElementById('startScreen');
+        const charSelect = document.getElementById('charSelect');
+        const readyScreen = document.getElementById('readyScreen');
+        const btnStart = document.getElementById('btnStart');
+        const btnToReady = document.getElementById('btnToReady');
+        const btnBackToStart = document.getElementById('btnBackToStart');
+        const btnBackToChars = document.getElementById('btnBackToChars');
+        const readyP1 = document.getElementById('readyP1');
+        const readyP2 = document.getElementById('readyP2');
+        const countdownEl = document.getElementById('countdown');
+        const charsP1 = document.getElementById('charsP1');
+        const charsP2 = document.getElementById('charsP2');
+        const selP1 = document.getElementById('selP1');
+        const selP2 = document.getElementById('selP2');
+
+        const characters = ['Default','Warrior','Rogue','Mage']; // placeholder set
+        let selection = { p1: 0, p2: 0 };
+        let ready = { p1: false, p2: false };
+
+        function renderCharLists(){
+          charsP1.innerHTML=''; charsP2.innerHTML='';
+          characters.forEach((c,i)=>{
+            const el1 = document.createElement('div'); el1.className='char'+(i===selection.p1?' selected':''); el1.textContent=c; el1.onclick=()=>{selection.p1=i; selP1.textContent=c; renderCharLists();}; charsP1.appendChild(el1);
+            const el2 = document.createElement('div'); el2.className='char'+(i===selection.p2?' selected':''); el2.textContent=c; el2.onclick=()=>{selection.p2=i; selP2.textContent=c; renderCharLists();}; charsP2.appendChild(el2);
+          });
+          selP1.textContent = characters[selection.p1]; selP2.textContent = characters[selection.p2];
+        }
+        renderCharLists();
+
+        function showScreen(which){ startScreen.style.display='none'; charSelect.style.display='none'; readyScreen.style.display='none';
+          if(which==='start'){ startScreen.style.display='block'; overlay.style.display='flex'; }
+          else if(which==='chars'){ charSelect.style.display='block'; overlay.style.display='flex'; }
+          else if(which==='ready'){ readyScreen.style.display='block'; overlay.style.display='flex'; }
+          else overlay.style.display='none';
         }
 
-        try{
-          console.log('Inline game.js loading');
-          const canvas = document.getElementById('game');
-          if(!canvas) throw new Error('Canvas element #game not found');
-          const ctx = canvas.getContext('2d');
-          if(!ctx) throw new Error('2D context not available (getContext returned null)');
+        btnStart.addEventListener('click', ()=>{ showScreen('chars'); });
+        btnBackToStart.addEventListener('click', ()=>{ showScreen('start'); });
+        btnToReady.addEventListener('click', ()=>{ ready.p1=false; ready.p2=false; updateReadyUI(); showScreen('ready'); });
+        btnBackToChars.addEventListener('click', ()=>{ showScreen('chars'); });
 
-          // focus canvas so arrow keys don't scroll the page in some browsers
-          canvas.setAttribute('tabindex', '0');
-          canvas.focus();
+        readyP1.addEventListener('click', ()=>{ ready.p1=!ready.p1; updateReadyUI(); checkBothReady(); });
+        readyP2.addEventListener('click', ()=>{ ready.p2=!ready.p2; updateReadyUI(); checkBothReady(); });
 
-          const WIDTH = canvas.width;
-          const HEIGHT = canvas.height;
-          const GRAVITY = 1.2;
-          const FRICTION = 0.85;
+        function updateReadyUI(){ readyP1.textContent = ready.p1 ? 'Ready' : 'Not Ready'; readyP1.className = ready.p1 ? 'btn' : 'btn ghost';
+          readyP2.textContent = ready.p2 ? 'Ready' : 'Not Ready'; readyP2.className = ready.p2 ? 'btn' : 'btn ghost'; }
 
-          // Platforms: x, y, w, h
-          const platforms = [
-            { x: 0, y: HEIGHT - 40, w: WIDTH, h: 40 },
-            { x: 240, y: 360, w: 200, h: 18 },
-            { x: 580, y: 300, w: 180, h: 18 }
-          ];
+        function checkBothReady(){ if(ready.p1 && ready.p2){ beginCountdown(); } }
 
-          function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+        let countdownTimer = null;
+        function beginCountdown(){ let count = 3; countdownEl.style.display='block'; countdownEl.textContent = ''+count; countdownTimer = setInterval(()=>{ count--; if(count<=0){ clearInterval(countdownTimer); countdownEl.style.display='none'; startMatch(); } else countdownEl.textContent=''+count; },1000); }
 
-          class Player {
-            constructor(x, color, controls) {
-              this.x = x;
-              this.y = 0;
-              this.w = 44;
-              this.h = 60;
-              this.vx = 0;
-              this.vy = 0;
-              this.onGround = false;
-              this.facing = 1;
-              this.color = color;
+        function startMatch(){ overlay.style.display='none'; matchActive = true; // apply selected characters if you want later
+          // reset players and start
+          restartRound(); }
 
-              this.maxHealth = 100;
-              this.health = this.maxHealth;
+        // show initial start screen
+        showScreen('start');
 
-              this.attackCooldown = 0;
-              this.attackDuration = 0;
-              this.attackType = null;
-              this.attackHasHit = false; // ensure single hit per attack
-              this.stun = 0;
-
-              this.controls = controls;
-              this.input = { left: false, right: false, up: false, attack: false };
-
-              this.score = 0;
-
-              // Double jump state
-              this.jumpsLeft = 2; // allows one double-jump in air
-
-              // Invulnerability after being hit
-              this.invuln = 0;
-            }
-
-            rect() { return { x: this.x - this.w/2, y: this.y - this.h, w: this.w, h: this.h }; }
-
-            land() { this.onGround = true; this.jumpsLeft = 2; }
-
-            jump() {
-              if (this.stun) return;
-              if (this.onGround) {
-                this.vy = -18;
-                this.onGround = false;
-                this.jumpsLeft = 1; // consumed one jump, allow one more in air
-              } else if (this.jumpsLeft > 0) {
-                // double jump
-                this.vy = -16; // slightly weaker than ground jump
-                this.jumpsLeft -= 1;
-              }
-            }
-
-            update() {
-              if (this.invuln > 0) this.invuln--;
-              if (this.stun > 0) this.stun--;
-              if (!this.stun) {
-                // Reduced acceleration to avoid doubled-speed issues
-                if (this.input.left) { this.vx = clamp(this.vx - 1.2, -8, 8); this.facing = -1; }
-                else if (this.input.right) { this.vx = clamp(this.vx + 1.2, -8, 8); this.facing = 1; }
-                else this.vx *= FRICTION;
-              } else { this.vx *= 0.95; }
-
-              // Gravity
-              this.vy += GRAVITY;
-              this.vy = clamp(this.vy, -30, 40);
-
-              // Position
-              this.x += this.vx;
-              this.y += this.vy;
-
-              // World bounds
-              this.x = clamp(this.x, this.w/2, WIDTH - this.w/2);
-              if (this.y > HEIGHT + 200) { this.health = 0; }
-
-              // Platform collisions
-              const prevOnGround = this.onGround;
-              this.onGround = false;
-              const r = this.rect();
-              for (const p of platforms) {
-                if (r.x < p.x + p.w && r.x + r.w > p.x && r.y < p.y + p.h && r.y + r.h > p.y) {
-                  // If coming down and penetrated platform from above
-                  if (this.vy >= 0 && (r.y + r.h) - this.vy <= p.y + p.h) {
-                    this.y = p.y; this.vy = 0; this.onGround = true;
-                  } else {
-                    // sideways or from below: push out horizontally
-                    if (r.x < p.x) this.x = p.x - this.w/2; else this.x = p.x + p.w + this.w/2;
-                    this.vx = 0;
-                  }
-                }
-              }
-
-              if (this.onGround && !prevOnGround) {
-                this.land();
-              }
-
-              if (this.attackCooldown > 0) this.attackCooldown--;
-              if (this.attackDuration > 0) this.attackDuration--;
-              if (this.attackDuration === 0) this.attackType = null;
-            }
-
-            startAttack() {
-              if (this.attackCooldown === 0 && this.attackDuration === 0 && !this.stun) {
-                // choose attack type based on state
-                let type = 'neutral';
-                if (!this.onGround) {
-                  if (this.vy > 3) type = 'down';
-                  else if (this.vy < -2) type = 'up';
-                  else if (Math.abs(this.vx) > 1) type = 'forward';
-                  else type = 'neutral';
-                } else {
-                  if (this.input.left || this.input.right) type = 'forward';
-                  else type = 'neutral';
-                }
-
-                this.attackType = type;
-                this.attackHasHit = false; // reset single-hit flag
-                // durations/cooldowns tuned per attack
-                if (type === 'down') { this.attackDuration = 20; this.attackCooldown = 40; /* removed forced downward velocity for attacker */ }
-                else if (type === 'up') { this.attackDuration = 14; this.attackCooldown = 30; }
-                else if (type === 'forward') { this.attackDuration = 14; this.attackCooldown = 30; }
-                else { this.attackDuration = 12; this.attackCooldown = 20; }
-              }
-            }
-
-            getAttackHitbox() {
-              if (this.attackDuration > 0 && this.attackType) {
-                const offset = 10;
-                if (this.attackType === 'down') {
-                  // big hitbox under the player
-                  const w = 48; const h = 40;
-                  const hx = this.x;
-                  const hy = this.y + 6; // slightly below feet
-                  return { x: hx - w/2, y: hy - h/2, w, h };
-                } else if (this.attackType === 'up') {
-                  const w = 36; const h = 40;
-                  const hx = this.x;
-                  const hy = this.y - this.h - 10;
-                  return { x: hx - w/2, y: hy - h/2, w, h };
-                } else if (this.attackType === 'forward') {
-                  const w = 44; const h = 28;
-                  const hx = this.x + this.facing * (this.w/2 + offset + w/2);
-                  const hy = this.y - this.h/2;
-                  return { x: hx - w/2, y: hy - h/2, w, h };
-                } else {
-                  // neutral
-                  const w = 38; const h = 28;
-                  const hx = this.x + this.facing * (this.w/2 + offset);
-                  const hy = this.y - this.h/2;
-                  return { x: hx - w/2, y: hy - h/2, w, h };
-                }
-              }
-              return null;
-            }
+        // --- core game code ---
+        class Player {
+          constructor(x, color, controls){
+            this.x=x; this.y=0; this.w=44; this.h=60; this.vx=0; this.vy=0; this.onGround=false; this.facing=1; this.color=color;
+            this.maxHealth=100; this.health=this.maxHealth; this.attackCooldown=0; this.attackDuration=0; this.attackType=null; this.stun=0;
+            this.controls=controls; this.input={left:false,right:false,up:false,attack:false}; this.score=0; this.jumpsLeft=2; this.attackHasHit=false; this.invuln=0;
           }
-
-          const player1 = new Player(200, '#63c2ff', { left: 'KeyA', right: 'KeyD', up: 'KeyW', attack: 'KeyS' });
-          const player2 = new Player(760, '#ff8b8b', { left: 'ArrowLeft', right: 'ArrowRight', up: 'ArrowUp', attack: 'ArrowDown' });
-          const players = [player1, player2];
-
-          const keyMap = {};
-          // keydown: track keys and trigger jump/attack pulses
-          window.addEventListener('keydown', (e) => {
-            // prevent page scrolling when pressing arrow keys used for controls
-            if (e.code === 'ArrowUp' || e.code === 'ArrowDown' || e.code === 'ArrowLeft' || e.code === 'ArrowRight') {
-              e.preventDefault();
-            }
-
-            if (e.code === 'KeyR') restartRound();
-            if (!keyMap[e.code]) { // only trigger on initial press
-              // trigger jump for matching players
-              if (e.code === player1.controls.up) player1.jump();
-              if (e.code === player2.controls.up) player2.jump();
-              // trigger attack
-              if (e.code === player1.controls.attack) player1.startAttack();
-              if (e.code === player2.controls.attack) player2.startAttack();
-            }
-            keyMap[e.code] = true;
-            updateInputsFromKeys();
-          });
-          window.addEventListener('keyup', (e) => { keyMap[e.code] = false; updateInputsFromKeys(); });
-
-          function updateInputsFromKeys(){
-            for (const p of players) {
-              p.input.left = !!keyMap[p.controls.left];
-              p.input.right = !!keyMap[p.controls.right];
-              // p.input.up left for legacy; jumps are handled on keydown
-            }
+          rect(){return {x:this.x-this.w/2,y:this.y-this.h,w:this.w,h:this.h};}
+          land(){ this.onGround=true; this.jumpsLeft=2; }
+          jump(){ if(this.stun) return; if(this.onGround){ this.vy=-18; this.onGround=false; this.jumpsLeft=1; } else if(this.jumpsLeft>0){ this.vy=-16; this.jumpsLeft--; } }
+          update(){ if(this.invuln>0) this.invuln--; if(this.stun>0) this.stun--; if(!this.stun){ if(this.input.left){ this.vx=clamp(this.vx-0.9,-8,8); this.facing=-1; } else if(this.input.right){ this.vx=clamp(this.vx+0.9,-8,8); this.facing=1; } else this.vx*=FRICTION; } else { this.vx*=0.95; }
+            this.vy+=GRAVITY; this.vy=clamp(this.vy,-30,40); this.x+=this.vx; this.y+=this.vy; this.x=clamp(this.x,this.w/2,WIDTH-this.w/2); if(this.y>HEIGHT+200) this.health=0;
+            const prevOnGround=this.onGround; this.onGround=false; const r=this.rect(); for(const p of platforms){ if(r.x<p.x+p.w && r.x+r.w>p.x && r.y<p.y+p.h && r.y+r.h>p.y){ if(this.vy>=0 && (r.y+r.h)-this.vy<=p.y+p.h){ this.y=p.y; this.vy=0; this.onGround=true; } else { if(r.x<p.x) this.x=p.x-this.w/2; else this.x=p.x+p.w+this.w/2; this.vx=0; } } }
+            if(this.onGround && !prevOnGround) this.land(); if(this.attackCooldown>0) this.attackCooldown--; if(this.attackDuration>0) this.attackDuration--; if(this.attackDuration===0){ this.attackType=null; this.attackHasHit=false; }
           }
+          startAttack(){ if(this.attackCooldown===0 && this.attackDuration===0 && !this.stun){ let type='neutral'; if(!this.onGround){ if(this.vy>3) type='down'; else if(this.vy<-2) type='up'; else if(Math.abs(this.vx)>1) type='forward'; else type='neutral'; } else { if(this.input.left||this.input.right) type='forward'; else type='neutral'; }
+              this.attackType=type; this.attackHasHit=false; if(type==='down'){ this.attackDuration=20; this.attackCooldown=48; } else if(type==='up'){ this.attackDuration=14; this.attackCooldown=40; } else if(type==='forward'){ this.attackDuration=14; this.attackCooldown=36; } else { this.attackDuration=12; this.attackCooldown=36; } } }
+          getAttackHitbox(){ if(this.attackDuration>0 && this.attackType){ const offset=10; if(this.attackType==='down'){ const w=48,h=40; const hx=this.x, hy=this.y+6; return {x:hx-w/2,y:hy-h/2,w,h}; } else if(this.attackType==='up'){ const w=36,h=40; const hx=this.x, hy=this.y-this.h-10; return {x:hx-w/2,y:hy-h/2,w,h}; } else if(this.attackType==='forward'){ const w=44,h=28; const hx=this.x+this.facing*(this.w/2+offset+w/2), hy=this.y-this.h/2; return {x:hx-w/2,y:hy-h/2,w,h}; } else { const w=38,h=28; const hx=this.x+this.facing*(this.w/2+offset), hy=this.y-this.h/2; return {x:hx-w/2,y:hy-h/2,w,h}; } } return null; }
+        }
 
-          let winner = null; let freeze = 2; // shorter freeze by default
-          function restartRound(){
-            player1.x = 200; player1.y = 0; player1.vx = 0; player1.vy = 0; player1.health = player1.maxHealth; player1.stun = 0; player1.jumpsLeft = 2; player1.attackHasHit = false; player1.invuln = 0;
-            player2.x = 760; player2.y = 0; player2.vx = 0; player2.vy = 0; player2.health = player2.maxHealth; player2.stun = 0; player2.jumpsLeft = 2; player2.attackHasHit = false; player2.invuln = 0;
-            winner = null; freeze = 0;
-          }
+        const player1 = new Player(200,'#63c2ff',{left:'KeyA',right:'KeyD',up:'KeyW',attack:'KeyS'});
+        const player2 = new Player(760,'#ff8b8b',{left:'ArrowLeft',right:'ArrowRight',up:'ArrowUp',attack:'ArrowDown'});
+        const players=[player1,player2];
 
-          function resolvePlatformPenetration(entity) {
-            const r = entity.rect();
-            for (const p of platforms) {
-              if (r.x < p.x + p.w && r.x + r.w > p.x && r.y < p.y + p.h && r.y + r.h > p.y) {
-                const penetration = (r.y + r.h) - p.y;
-                if (penetration > 4 && entity.vy >= 0) {
-                  // place entity on top of platform
-                  entity.y = p.y + entity.h; // fix: previous code used top as p.y, adjust below
-                  // place just above platform
-                  entity.y = p.y; // set feet to platform top
-                  entity.vy = Math.min(entity.vy, 4);
-                  entity.onGround = true;
-                }
-              }
-            }
-          }
+        const keyMap={}; window.addEventListener('keydown',(e)=>{ if(e.code==='KeyR') restartRound(); if(!keyMap[e.code]){ if(e.code===player1.controls.up) player1.jump(); if(e.code===player2.controls.up) player2.jump(); if(e.code===player1.controls.attack) player1.startAttack(); if(e.code===player2.controls.attack) player2.startAttack(); } keyMap[e.code]=true; updateInputsFromKeys(); },{passive:false});
+        window.addEventListener('keyup',(e)=>{ keyMap[e.code]=false; updateInputsFromKeys(); });
+        function updateInputsFromKeys(){ for(const p of players){ p.input.left=!!keyMap[p.controls.left]; p.input.right=!!keyMap[p.controls.right]; } }
 
-          function applyAttack(attacker, defender, hitbox) {
-            if (!hitbox) return;
-            // only apply once per attack activation
-            if (attacker.attackHasHit) return;
-            // skip defender if invulnerable
-            if (defender.invuln && defender.invuln > 0) return;
+        let winner=null; let freeze=0;
+        function restartRound(){ player1.x=200;player1.y=0;player1.vx=0;player1.vy=0;player1.health=player1.maxHealth;player1.stun=0;player1.jumpsLeft=2;player1.attackHasHit=false;player1.invuln=0;
+          player2.x=760;player2.y=0;player2.vx=0;player2.vy=0;player2.health=player2.maxHealth;player2.stun=0;player2.jumpsLeft=2;player2.attackHasHit=false;player2.invuln=0; winner=null; freeze=0; }
 
-            const d = defender.rect();
-            if (hitbox.x < d.x + d.w && hitbox.x + hitbox.w > d.x && hitbox.y < d.y + d.h && hitbox.y + hitbox.h > d.y) {
-              // hit! nerfed damage, stronger knockback but single hit
-              let damage = 3; // further nerfed base damage
-              let knock = 18; // default stronger horizontal knock
-              let vely = -6;
+        function resolvePlatformPenetration(entity){ const r=entity.rect(); for(const p of platforms){ if(r.x<p.x+p.w && r.x+r.w>p.x && r.y<p.y+p.h && r.y+r.h>p.y){ const penetration=(r.y+r.h)-p.y; if(penetration>4 && entity.vy>=0){ entity.y=p.y; entity.vy=Math.min(entity.vy,4); entity.onGround=true; } } } }
 
-              if (attacker.attackType === 'down') {
-                damage = 15; knock = 12; vely = 10; // slam defender downward, but smaller than before
-              } else if (attacker.attackType === 'up') {
-                damage = 10; knock = 16; vely = -10;
-              } else if (attacker.attackType === 'forward') {
-                damage = 5; knock = 9; vely = -8;
-              } else { // neutral
-                damage = 8; knock = 5; vely = -6;
-              }
+        function applyAttack(attacker,defender,hitbox){ if(!hitbox) return; if(attacker.attackHasHit) return; if(defender.invuln&&defender.invuln>0) return; const d=defender.rect(); if(hitbox.x<d.x+d.w&&hitbox.x+hitbox.w>d.x&&hitbox.y<d.y+d.h&&hitbox.y+hitbox.h>d.y){ let damage=3,knock=18,vely=-6; if(attacker.attackType==='down'){ damage=5;knock=22;vely=10; } else if(attacker.attackType==='up'){ damage=4;knock=16;vely=-10; } else if(attacker.attackType==='forward'){ damage=4;knock=20;vely=-8; } else { damage=3;knock=18;vely=-6; } defender.vx=clamp(attacker.facing*knock,-36,36); defender.vy=clamp(vely,-40,40); defender.health=Math.max(0,defender.health-damage); defender.stun=12; defender.invuln=22; attacker.attackHasHit=true; freeze=2; resolvePlatformPenetration(defender); } }
 
-              // apply velocities (cap to avoid extreme values)
-              defender.vx = clamp(attacker.facing * knock, -36, 36);
-              defender.vy = clamp(vely, -40, 40);
+        function update(){ if(!matchActive) return; if(freeze>0){ freeze--; return;} for(const p of players) p.update(); const hb1=player1.getAttackHitbox(); const hb2=player2.getAttackHitbox(); applyAttack(player1,player2,hb1); applyAttack(player2,player1,hb2); if(player1.health<=0&&player2.health>0){ winner=2; player2.score++; matchActive=false; showScreen('start'); } else if(player2.health<=0&&player1.health>0){ winner=1; player1.score++; matchActive=false; showScreen('start'); } else if(player1.health<=0&&player2.health<=0){ winner=0; matchActive=false; showScreen('start'); } }
 
-              defender.health = Math.max(0, defender.health - damage);
-              defender.stun = 12; // slightly reduced stun
-              defender.invuln = 22; // give brief invulnerability after being hit
-              attacker.attackHasHit = true; // prevent multiple hits from same attack
-              freeze = 2; // shorter freeze to reduce perceived lag
+        function drawRect(r,color){ ctx.fillStyle=color; ctx.fillRect(r.x,r.y,r.w,r.h); }
+        function draw(){ ctx.clearRect(0,0,WIDTH,HEIGHT); ctx.fillStyle='#15202b'; ctx.fillRect(0,0,WIDTH,HEIGHT); for(const p of platforms){ drawRect(p,'#37474f'); ctx.fillStyle='#4b5b66'; ctx.fillRect(p.x,p.y,p.w,4); }
+          for(const p of players){ const r=p.rect(); ctx.fillStyle='rgba(0,0,0,0.25)'; ctx.fillRect(r.x+6,r.y+r.h+4,r.w,8); ctx.fillStyle=p.color; ctx.fillRect(r.x,r.y,r.w,r.h); ctx.fillStyle='#111'; const eyeX=r.x+(p.facing===1? r.w*0.65: r.w*0.35); ctx.fillRect(eyeX-6,r.y+12,8,8); const hb=p.getAttackHitbox(); if(hb){ if(p.attackType==='down') ctx.fillStyle='rgba(255,0,80,0.45)'; else if(p.attackType==='up') ctx.fillStyle='rgba(120,255,120,0.35)'; else ctx.fillStyle='rgba(255,255,0,0.35)'; ctx.fillRect(hb.x,hb.y,hb.w,hb.h); }
+            const barX=(p===player1)?24:WIDTH-224; ctx.fillStyle='#000'; ctx.fillRect(barX,16,200,16); ctx.fillStyle='#d32f2f'; ctx.fillRect(barX+2,18,(196*p.health/p.maxHealth),12); ctx.strokeStyle='#222'; ctx.strokeRect(barX,16,200,16); ctx.fillStyle='#fff'; ctx.font='12px sans-serif'; ctx.fillText('P'+(players.indexOf(p)+1)+' HP: '+p.health,barX+4,20); ctx.fillStyle='#fff'; ctx.font='11px monospace'; ctx.fillText('Jumps: '+p.jumpsLeft+'  ATK:'+ (p.attackType||'-'), r.x, r.y-8); }
+          if(winner!==null){ ctx.fillStyle='#fff'; ctx.font='36px sans-serif'; let t='Draw!'; if(winner===1) t='Player 1 Wins!'; else if(winner===2) t='Player 2 Wins!'; ctx.fillText(t, WIDTH/2-ctx.measureText(t).width/2, HEIGHT/2-6); ctx.font='16px sans-serif'; const s='Press R to restart'; ctx.fillText(s, WIDTH/2-ctx.measureText(s).width/2, HEIGHT/2+26); }
+          ctx.fillStyle='#fff'; ctx.font='14px sans-serif'; ctx.fillText('Score P1: '+player1.score,24,HEIGHT-16); ctx.fillText('Score P2: '+player2.score,WIDTH-120,HEIGHT-16);
+        }
 
-              // Quickly resolve platform penetration so the defender won't get trapped under platforms
-              resolvePlatformPenetration(defender);
-            }
-          }
+        let last=0; function loop(ts){ const dt=ts-last; last=ts; update(); draw(); requestAnimationFrame(loop); }
+        restartRound(); requestAnimationFrame(loop);
 
-          function update() {
-            if (freeze > 0) { freeze--; return; }
-            for (const p of players) p.update();
-            const hb1 = player1.getAttackHitbox();
-            const hb2 = player2.getAttackHitbox();
-            applyAttack(player1, player2, hb1);
-            applyAttack(player2, player1, hb2);
-
-            if (player1.health <= 0 && player2.health > 0) { winner = 2; player2.score++; }
-            else if (player2.health <= 0 && player1.health > 0) { winner = 1; player1.score++; }
-            else if (player1.health <= 0 && player2.health <= 0) { winner = 0; }
-          }
-
-          function drawRect(r, color){ ctx.fillStyle = color; ctx.fillRect(r.x, r.y, r.w, r.h); }
-          function draw(){
-            ctx.clearRect(0,0,WIDTH,HEIGHT);
-            ctx.fillStyle = '#15202b'; ctx.fillRect(0,0,WIDTH,HEIGHT);
-            for (const p of platforms){ drawRect(p, '#37474f'); ctx.fillStyle = '#4b5b66'; ctx.fillRect(p.x, p.y, p.w, 4); }
-
-            for (const p of players){
-              const r = p.rect();
-              ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(r.x + 6, r.y + r.h + 4, r.w, 8);
-              ctx.fillStyle = p.color; ctx.fillRect(r.x, r.y, r.w, r.h);
-              ctx.fillStyle = '#111'; const eyeX = r.x + (p.facing === 1 ? r.w * 0.65 : r.w * 0.35); ctx.fillRect(eyeX - 6, r.y + 12, 8, 8);
-
-              // draw attack hitbox
-              const hb = p.getAttackHitbox();
-              if (hb) {
-                if (p.attackType === 'down') ctx.fillStyle = 'rgba(255,0,80,0.45)';
-                else if (p.attackType === 'up') ctx.fillStyle = 'rgba(120,255,120,0.35)';
-                else ctx.fillStyle = 'rgba(255,255,0,0.35)';
-                ctx.fillRect(hb.x, hb.y, hb.w, hb.h);
-              }
-
-              // health bar
-              const barX = (p === player1) ? 24 : WIDTH - 224;
-              ctx.fillStyle = '#000'; ctx.fillRect(barX, 16, 200, 16);
-              ctx.fillStyle = '#d32f2f'; ctx.fillRect(barX + 2, 18, (196 * p.health / p.maxHealth), 12);
-              ctx.strokeStyle = '#222'; ctx.strokeRect(barX, 16, 200, 16);
-              ctx.fillStyle = '#fff'; ctx.font = '12px sans-serif'; ctx.fillText('P' + (players.indexOf(p)+1) + ' HP: ' + p.health, barX + 4, 20);
-
-              // draw jumps left indicator and current attack type
-              ctx.fillStyle = '#fff'; ctx.font = '11px monospace'; ctx.fillText('Jumps: ' + p.jumpsLeft + '  ATK:' + (p.attackType||'-'), r.x, r.y - 8);
-            }
-
-            if (winner !== null){ ctx.fillStyle = '#fff'; ctx.font = '36px sans-serif'; let t = 'Draw!'; if (winner === 1) t = 'Player 1 Wins!'; else if (winner === 2) t = 'Player 2 Wins!'; ctx.fillText(t, WIDTH/2 - ctx.measureText(t).width/2, HEIGHT/2 - 6); ctx.font = '16px sans-serif'; const s = 'Press R to restart'; ctx.fillText(s, WIDTH/2 - ctx.measureText(s).width/2, HEIGHT/2 + 26); }
-
-            ctx.fillStyle = '#fff'; ctx.font = '14px sans-serif'; ctx.fillText('Score P1: ' + player1.score, 24, HEIGHT - 16); ctx.fillText('Score P2: ' + player2.score, WIDTH - 120, HEIGHT - 16);
-          }
-
-          let last = 0; function loop(ts){ const dt = ts - last; last = ts; if(!winner) update(); draw(); requestAnimationFrame(loop); }
-          restartRound(); requestAnimationFrame(loop);
-
-          console.log('Inline game.js initialized');
-        }catch(err){ showError(err); }
-      })();
-    }
+        console.log('Inline game.js initialized');
+      }catch(err){ showError(err); }
+    })();
   </script>
 </body>
 </html>
