@@ -352,13 +352,13 @@ If errors appear, a diagnostic box will show at the bottom with the stack trace.
               let vely = -6;
 
               if (attacker.attackType === 'down') {
-                damage = 5; knock = 22; vely = 10; // slam defender downward, but smaller than before
+                damage = 15; knock = 12; vely = 10; // slam defender downward, but smaller than before
               } else if (attacker.attackType === 'up') {
-                damage = 4; knock = 16; vely = -10;
+                damage = 10; knock = 16; vely = -10;
               } else if (attacker.attackType === 'forward') {
-                damage = 4; knock = 20; vely = -8;
+                damage = 5; knock = 9; vely = -8;
               } else { // neutral
-                damage = 3; knock = 18; vely = -6;
+                damage = 8; knock = 5; vely = -6;
               }
 
               // apply velocities (cap to avoid extreme values)
