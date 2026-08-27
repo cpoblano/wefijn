@@ -241,10 +241,10 @@ If errors appear, a diagnostic box will show at the bottom with the stack trace.
                 this.attackType = type;
                 this.attackHasHit = false; // reset single-hit flag
                 // durations/cooldowns tuned per attack
-                if (type === 'down') { this.attackDuration = 20; this.attackCooldown = 48; /* removed forced downward velocity for attacker */ }
-                else if (type === 'up') { this.attackDuration = 14; this.attackCooldown = 40; }
-                else if (type === 'forward') { this.attackDuration = 14; this.attackCooldown = 36; }
-                else { this.attackDuration = 12; this.attackCooldown = 36; }
+                if (type === 'down') { this.attackDuration = 20; this.attackCooldown = 40; /* removed forced downward velocity for attacker */ }
+                else if (type === 'up') { this.attackDuration = 14; this.attackCooldown = 30; }
+                else if (type === 'forward') { this.attackDuration = 14; this.attackCooldown = 30; }
+                else { this.attackDuration = 12; this.attackCooldown = 20; }
               }
             }
 
