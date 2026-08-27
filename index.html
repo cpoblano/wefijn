@@ -25,6 +25,7 @@
     .charList{display:flex;gap:8px;flex-wrap:wrap}
     .char{padding:10px;border-radius:6px;background:#122;cursor:pointer;border:1px solid #333}
     .char.selected{outline:2px solid #4caf50}
+    .char.locked{opacity:0.55;cursor:default;border-style:dashed}
 
     .readyBox{display:flex;gap:8px;align-items:center}
 
@@ -167,15 +168,28 @@ More characters will be added later.
         const selP1 = document.getElementById('selP1');
         const selP2 = document.getElementById('selP2');
 
-        const characters = ['Default','Warrior','Rogue','Mage']; // placeholder set
+        // Make non-default characters unknown and unselectable
+        const characters = ['Default','???','???','???'];
         let selection = { p1: 0, p2: 0 };
         let ready = { p1: false, p2: false };
 
         function renderCharLists(){
           charsP1.innerHTML=''; charsP2.innerHTML='';
           characters.forEach((c,i)=>{
-            const el1 = document.createElement('div'); el1.className='char'+(i===selection.p1?' selected':''); el1.textContent=c; el1.onclick=()=>{selection.p1=i; selP1.textContent=c; renderCharLists();}; charsP1.appendChild(el1);
-            const el2 = document.createElement('div'); el2.className='char'+(i===selection.p2?' selected':''); el2.textContent=c; el2.onclick=()=>{selection.p2=i; selP2.textContent=c; renderCharLists();}; charsP2.appendChild(el2);
+            const el1 = document.createElement('div');
+            el1.className = 'char' + (i===selection.p1 ? ' selected' : '') + (i===0 ? '' : ' locked');
+            el1.textContent = c;
+            // only make the default character selectable
+            if(i===0){ el1.onclick = ()=>{ selection.p1 = i; selP1.textContent = c; renderCharLists(); }; }
+            else { el1.setAttribute('title','Locked: character not implemented'); }
+            charsP1.appendChild(el1);
+
+            const el2 = document.createElement('div');
+            el2.className = 'char' + (i===selection.p2 ? ' selected' : '') + (i===0 ? '' : ' locked');
+            el2.textContent = c;
+            if(i===0){ el2.onclick = ()=>{ selection.p2 = i; selP2.textContent = c; renderCharLists(); }; }
+            else { el2.setAttribute('title','Locked: character not implemented'); }
+            charsP2.appendChild(el2);
           });
           selP1.textContent = characters[selection.p1]; selP2.textContent = characters[selection.p2];
         }
