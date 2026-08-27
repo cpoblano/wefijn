@@ -140,6 +140,10 @@ More characters will be added later.
         const canvas = document.getElementById('game'); if(!canvas) throw new Error('Canvas element #game not found');
         const ctx = canvas.getContext('2d'); if(!ctx) throw new Error('2D context not available');
 
+        // ensure canvas can receive focus so arrow keys target the game
+        canvas.setAttribute('tabindex','0');
+        canvas.focus();
+
         const WIDTH = canvas.width, HEIGHT = canvas.height;
         const GRAVITY = 0.9, FRICTION = 0.85;
 
@@ -232,7 +236,13 @@ More characters will be added later.
         const player2 = new Player(760,'#ff8b8b',{left:'ArrowLeft',right:'ArrowRight',up:'ArrowUp',attack:'ArrowDown'});
         const players=[player1,player2];
 
-        const keyMap={}; window.addEventListener('keydown',(e)=>{ if(e.code==='KeyR') restartRound(); if(!keyMap[e.code]){ if(e.code===player1.controls.up) player1.jump(); if(e.code===player2.controls.up) player2.jump(); if(e.code===player1.controls.attack) player1.startAttack(); if(e.code===player2.controls.attack) player2.startAttack(); } keyMap[e.code]=true; updateInputsFromKeys(); },{passive:false});
+        const keyMap={}; window.addEventListener('keydown',(e)=>{ 
+          // prevent arrow keys from scrolling the page
+          if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) {
+            e.preventDefault();
+          }
+
+          if(e.code==='KeyR') restartRound(); if(!keyMap[e.code]){ if(e.code===player1.controls.up) player1.jump(); if(e.code===player2.controls.up) player2.jump(); if(e.code===player1.controls.attack) player1.startAttack(); if(e.code===player2.controls.attack) player2.startAttack(); } keyMap[e.code]=true; updateInputsFromKeys(); },{passive:false});
         window.addEventListener('keyup',(e)=>{ keyMap[e.code]=false; updateInputsFromKeys(); });
         function updateInputsFromKeys(){ for(const p of players){ p.input.left=!!keyMap[p.controls.left]; p.input.right=!!keyMap[p.controls.right]; } }
 
