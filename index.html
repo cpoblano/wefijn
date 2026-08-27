@@ -27,7 +27,6 @@
     .char.selected{outline:2px solid #4caf50}
 
     .readyBox{display:flex;gap:8px;align-items:center}
-    .countdown{font-size:48px;text-align:center;margin:8px 0}
 
     /* small screens stack */
     @media (max-width:900px){
@@ -69,7 +68,7 @@ Attack: ↓
         <div>
           <strong>Notes</strong>
           <pre>
-Press Start → choose characters → Ready up. When both players ready a 3 second countdown starts and the match begins.
+Press Start → choose characters → Ready up. When both players are ready the match begins immediately.
 More characters will be added later.
           </pre>
         </div>
@@ -82,7 +81,7 @@ More characters will be added later.
       <div id="startScreen">
         <h2>Welcome</h2>
         <p>Press Start to begin</p>
-        <div><button id="btnStart" class="btn">Start</button></div>
+        <div><button id="btnStart" class="btn" type="button">Start</button></div>
       </div>
 
       <div id="charSelect" style="display:none">
@@ -100,8 +99,8 @@ More characters will be added later.
           </div>
         </div>
         <div style="margin-top:12px">
-          <button id="btnToReady" class="btn">Ready</button>
-          <button id="btnBackToStart" class="btn ghost">Back</button>
+          <button id="btnToReady" class="btn" type="button">Ready</button>
+          <button id="btnBackToStart" class="btn ghost" type="button">Back</button>
         </div>
       </div>
 
@@ -110,15 +109,16 @@ More characters will be added later.
         <div class="row" style="margin-bottom:12px">
           <div class="col readyBox">
             <div>Player 1</div>
-            <button id="readyP1" class="btn ghost">Not Ready</button>
+            <button id="readyP1" class="btn ghost" type="button">Not Ready</button>
+            <div style="margin-left:8px;font-size:12px;color:#bbb">(press S to toggle)</div>
           </div>
           <div class="col readyBox">
             <div>Player 2</div>
-            <button id="readyP2" class="btn ghost">Not Ready</button>
+            <button id="readyP2" class="btn ghost" type="button">Not Ready</button>
+            <div style="margin-left:8px;font-size:12px;color:#bbb">(press ↓ to toggle)</div>
           </div>
         </div>
-        <div class="countdown" id="countdown" style="display:none">3</div>
-        <div><button id="btnBackToChars" class="btn ghost">Back</button></div>
+        <div><button id="btnBackToChars" class="btn ghost" type="button">Back</button></div>
       </div>
     </div>
   </div>
@@ -162,7 +162,6 @@ More characters will be added later.
         const btnBackToChars = document.getElementById('btnBackToChars');
         const readyP1 = document.getElementById('readyP1');
         const readyP2 = document.getElementById('readyP2');
-        const countdownEl = document.getElementById('countdown');
         const charsP1 = document.getElementById('charsP1');
         const charsP2 = document.getElementById('charsP2');
         const selP1 = document.getElementById('selP1');
@@ -200,14 +199,14 @@ More characters will be added later.
         function updateReadyUI(){ readyP1.textContent = ready.p1 ? 'Ready' : 'Not Ready'; readyP1.className = ready.p1 ? 'btn' : 'btn ghost';
           readyP2.textContent = ready.p2 ? 'Ready' : 'Not Ready'; readyP2.className = ready.p2 ? 'btn' : 'btn ghost'; }
 
-        function checkBothReady(){ if(ready.p1 && ready.p2){ beginCountdown(); } }
-
-        let countdownTimer = null;
-        function beginCountdown(){ let count = 3; countdownEl.style.display='block'; countdownEl.textContent = ''+count; countdownTimer = setInterval(()=>{ count--; if(count<=0){ clearInterval(countdownTimer); countdownEl.style.display='none'; startMatch(); } else countdownEl.textContent=''+count; },1000); }
+        function checkBothReady(){ if(ready.p1 && ready.p2){ startMatch(); } }
 
         function startMatch(){ overlay.style.display='none'; matchActive = true; // apply selected characters if you want later
           // reset players and start
-          restartRound(); }
+          restartRound();
+          // focus canvas so keyboard controls go to game
+          canvas.focus();
+        }
 
         // show initial start screen
         showScreen('start');
@@ -242,7 +241,27 @@ More characters will be added later.
             e.preventDefault();
           }
 
-          if(e.code==='KeyR') restartRound(); if(!keyMap[e.code]){ if(e.code===player1.controls.up) player1.jump(); if(e.code===player2.controls.up) player2.jump(); if(e.code===player1.controls.attack) player1.startAttack(); if(e.code===player2.controls.attack) player2.startAttack(); } keyMap[e.code]=true; updateInputsFromKeys(); },{passive:false});
+          if(e.code==='KeyR') restartRound();
+
+          // If menu is open (not matchActive), allow menu keyboard shortcuts
+          if(!matchActive){
+            // If ready screen is visible, let attack keys toggle ready for each player
+            if(readyScreen.style.display==='block' && !keyMap[e.code]){
+              if(e.code===player1.controls.attack){ ready.p1=!ready.p1; updateReadyUI(); checkBothReady(); }
+              if(e.code===player2.controls.attack){ ready.p2=!ready.p2; updateReadyUI(); checkBothReady(); }
+            }
+          } else {
+            // Gameplay hotkeys (only when matchActive)
+            if(!keyMap[e.code]){
+              if(e.code===player1.controls.up) player1.jump();
+              if(e.code===player2.controls.up) player2.jump();
+              if(e.code===player1.controls.attack) player1.startAttack();
+              if(e.code===player2.controls.attack) player2.startAttack();
+            }
+          }
+
+          keyMap[e.code]=true; updateInputsFromKeys();
+        },{passive:false});
         window.addEventListener('keyup',(e)=>{ keyMap[e.code]=false; updateInputsFromKeys(); });
         function updateInputsFromKeys(){ for(const p of players){ p.input.left=!!keyMap[p.controls.left]; p.input.right=!!keyMap[p.controls.right]; } }
 
