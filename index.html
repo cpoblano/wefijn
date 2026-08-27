@@ -6,22 +6,18 @@
   <title>Simple 2D Platform Fighter</title>
   <style>
     html,body{height:100%;margin:0;background:#111;color:#eee;font-family:Arial,Helvetica,sans-serif}
-    .wrap{max-width:1280px;margin:12px auto;display:flex;gap:20px;align-items:flex-start;justify-content:center}
+    .wrap{max-width:1400px;margin:12px auto;display:flex;gap:20px;align-items:flex-start;justify-content:center}
     #game{display:block;border:4px solid #222;background:#15202b}
 
-    aside.hint{width:320px;box-sizing:border-box;padding:12px;background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(0,0,0,0.02));border-radius:6px;border:1px solid rgba(255,255,255,0.03)}
-    .controls{display:flex;flex-direction:column;gap:16px}
-    .controls > div{background:rgba(255,255,255,0.02);padding:8px;border-radius:6px}
-    pre{background:#0b1220;padding:8px;border-radius:6px;color:#9cf;overflow:auto;margin:0}
+    .btn{display:inline-block;padding:8px 12px;background:#1e88e5;color:#fff;border-radius:6px;cursor:pointer;border:0}
+    .btn.ghost{background:transparent;border:1px solid #556}
 
     /* Fullscreen menu overlay */
-    #menuOverlay{position:fixed;left:0;top:0;right:0;bottom:0;background:rgba(0,0,0,0.8);display:flex;align-items:center;justify-content:center;z-index:999}
-    .menu{width:820px;max-width:95%;background:#0e1620;border-radius:8px;padding:18px;border:1px solid #263238}
+    #menuOverlay{position:fixed;left:0;top:0;right:0;bottom:0;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;z-index:999}
+    .menu{width:920px;max-width:96%;background:#0e1620;border-radius:8px;padding:18px;border:1px solid #263238}
     .menu h2{margin:0 0 12px 0}
     .menu .row{display:flex;gap:12px}
     .menu .col{flex:1}
-    .btn{display:inline-block;padding:8px 12px;background:#1e88e5;color:#fff;border-radius:6px;cursor:pointer;border:0}
-    .btn.ghost{background:transparent;border:1px solid #556}
     .charList{display:flex;gap:8px;flex-wrap:wrap}
     .char{padding:10px;border-radius:6px;background:#122;cursor:pointer;border:1px solid #333}
     .char.selected{outline:2px solid #4caf50}
@@ -29,10 +25,13 @@
 
     .readyBox{display:flex;gap:8px;align-items:center}
 
-    /* small screens stack */
+    /* menu nav */
+    .menuNav{display:flex;gap:8px;margin-bottom:12px}
+    .menuNav button{background:transparent;border:0;color:#9fc;cursor:pointer;padding:6px 10px;border-radius:6px}
+    .menuNav button.active{background:#1e88e5;color:#fff}
+
     @media (max-width:900px){
       .wrap{flex-direction:column;align-items:center}
-      aside.hint{width:calc(100% - 40px)}
     }
 
     /* Diagnostic overlay */
@@ -43,46 +42,28 @@
 </head>
 <body>
   <div class="wrap">
-    <canvas id="game" width="960" height="540" aria-label="Game canvas"></canvas>
-
-    <aside class="hint" aria-labelledby="demo-title">
-      <h2 id="demo-title">Simple 2D Platform Fighter (Demo)</h2>
-      <div class="controls">
-        <div>
-          <strong>Player 1</strong>
-          <pre>
-Move: A / D
-Jump: W (double jump enabled)
-Attack: S
-          </pre>
-        </div>
-
-        <div>
-          <strong>Player 2</strong>
-          <pre>
-Move: ← / →
-Jump: ↑ (double jump enabled)
-Attack: ↓
-          </pre>
-        </div>
-
-        <div>
-          <strong>Notes</strong>
-          <pre>
-Press Start → choose characters → Ready up. When both players are ready the match begins immediately.
-More characters will be added later.
-          </pre>
-        </div>
-      </div>
-    </aside>
+    <!-- larger canvas to give more play area now that controls moved into the menu -->
+    <canvas id="game" width="1100" height="620" aria-label="Game canvas"></canvas>
   </div>
 
   <div id="menuOverlay" role="dialog" aria-modal="true">
     <div class="menu" id="menu">
+      <div class="menuNav">
+        <button id="navStart" class="active">Start</button>
+        <button id="navChars">Characters</button>
+        <button id="navReady">Ready</button>
+        <button id="navSettings">Settings</button>
+        <button id="navInfo">Info</button>
+      </div>
+
       <div id="startScreen">
         <h2>Welcome</h2>
         <p>Press Start to begin</p>
-        <div><button id="btnStart" class="btn" type="button">Start</button></div>
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button id="btnStart" class="btn" type="button">Start</button>
+          <button id="btnSettings" class="btn ghost" type="button">Settings</button>
+          <button id="btnInfo" class="btn ghost" type="button">Info</button>
+        </div>
       </div>
 
       <div id="charSelect" style="display:none">
@@ -119,8 +100,31 @@ More characters will be added later.
             <div style="margin-left:8px;font-size:12px;color:#bbb">(press ↓ to toggle)</div>
           </div>
         </div>
-        <div><button id="btnBackToChars" class="btn ghost" type="button">Back</button></div>
+        <div style="display:flex;gap:8px"><button id="btnBackToChars" class="btn ghost" type="button">Back</button><button id="btnBackToStartFromReady" class="btn ghost" type="button">Main</button></div>
       </div>
+
+      <div id="settingsScreen" style="display:none">
+        <h2>Settings</h2>
+        <div style="display:flex;flex-direction:column;gap:10px;margin-top:8px">
+          <label><input id="optFullscreen" type="checkbox"> Start fullscreen (placeholder)</label>
+          <label><input id="optSound" type="checkbox" checked> Enable sound (placeholder)</label>
+          <label>Canvas scale: <select id="canvasScale"><option value="1">1x</option><option value="1.25">1.25x</option><option value="1.5">1.5x</option></select></label>
+          <div style="margin-top:8px"><button id="btnSaveSettings" class="btn" type="button">Save</button></div>
+        </div>
+      </div>
+
+      <div id="infoScreen" style="display:none">
+        <h2>Info & Controls</h2>
+        <div style="margin-top:8px;line-height:1.4">
+          <strong>Player 1</strong>
+          <pre style="background:#08121a;padding:8px;border-radius:6px;color:#9cf;">Move: A / D\nJump: W (double jump enabled)\nAttack: S</pre>
+          <strong>Player 2</strong>
+          <pre style="background:#08121a;padding:8px;border-radius:6px;color:#9cf;">Move: ← / →\nJump: ↑ (double jump enabled)\nAttack: ↓</pre>
+          <strong>Notes</strong>
+          <pre style="background:#08121a;padding:8px;border-radius:6px;color:#9cf;">First to reduce opponent to 0 health wins; press R to restart.\nNew moves: double jump and aerial attacks — down-air performs a downward slam.\nUse the Ready screen to begin the match.\nIf nothing appears: run a local server (python -m http.server) and open http://localhost:8000</pre>
+        </div>
+      </div>
+
     </div>
   </div>
 
@@ -145,7 +149,7 @@ More characters will be added later.
         canvas.setAttribute('tabindex','0');
         canvas.focus();
 
-        const WIDTH = canvas.width, HEIGHT = canvas.height;
+        let WIDTH = canvas.width, HEIGHT = canvas.height;
         const GRAVITY = 0.9, FRICTION = 0.85;
 
         const platforms = [ { x: 0, y: HEIGHT - 40, w: WIDTH, h: 40 }, { x: 240, y: 360, w: 200, h: 18 }, { x: 580, y: 300, w: 180, h: 18 } ];
@@ -157,10 +161,23 @@ More characters will be added later.
         const startScreen = document.getElementById('startScreen');
         const charSelect = document.getElementById('charSelect');
         const readyScreen = document.getElementById('readyScreen');
+        const settingsScreen = document.getElementById('settingsScreen');
+        const infoScreen = document.getElementById('infoScreen');
+
+        const navStart = document.getElementById('navStart');
+        const navChars = document.getElementById('navChars');
+        const navReady = document.getElementById('navReady');
+        const navSettings = document.getElementById('navSettings');
+        const navInfo = document.getElementById('navInfo');
+
         const btnStart = document.getElementById('btnStart');
         const btnToReady = document.getElementById('btnToReady');
         const btnBackToStart = document.getElementById('btnBackToStart');
         const btnBackToChars = document.getElementById('btnBackToChars');
+        const btnBackToStartFromReady = document.getElementById('btnBackToStartFromReady');
+        const btnSettings = document.getElementById('btnSettings');
+        const btnInfo = document.getElementById('btnInfo');
+
         const readyP1 = document.getElementById('readyP1');
         const readyP2 = document.getElementById('readyP2');
         const charsP1 = document.getElementById('charsP1');
@@ -195,17 +212,29 @@ More characters will be added later.
         }
         renderCharLists();
 
-        function showScreen(which){ startScreen.style.display='none'; charSelect.style.display='none'; readyScreen.style.display='none';
-          if(which==='start'){ startScreen.style.display='block'; overlay.style.display='flex'; }
-          else if(which==='chars'){ charSelect.style.display='block'; overlay.style.display='flex'; }
-          else if(which==='ready'){ readyScreen.style.display='block'; overlay.style.display='flex'; }
+        function activateNav(button){ [navStart,navChars,navReady,navSettings,navInfo].forEach(b=>b.classList.remove('active')); button.classList.add('active'); }
+        function showScreen(which){ startScreen.style.display='none'; charSelect.style.display='none'; readyScreen.style.display='none'; settingsScreen.style.display='none'; infoScreen.style.display='none';
+          if(which==='start'){ activateNav(navStart); startScreen.style.display='block'; overlay.style.display='flex'; }
+          else if(which==='chars'){ activateNav(navChars); charSelect.style.display='block'; overlay.style.display='flex'; }
+          else if(which==='ready'){ activateNav(navReady); readyScreen.style.display='block'; overlay.style.display='flex'; }
+          else if(which==='settings'){ activateNav(navSettings); settingsScreen.style.display='block'; overlay.style.display='flex'; }
+          else if(which==='info'){ activateNav(navInfo); infoScreen.style.display='block'; overlay.style.display='flex'; }
           else overlay.style.display='none';
         }
 
+        navStart.addEventListener('click', ()=> showScreen('start'));
+        navChars.addEventListener('click', ()=> showScreen('chars'));
+        navReady.addEventListener('click', ()=> showScreen('ready'));
+        navSettings.addEventListener('click', ()=> showScreen('settings'));
+        navInfo.addEventListener('click', ()=> showScreen('info'));
+
         btnStart.addEventListener('click', ()=>{ showScreen('chars'); });
+        btnSettings.addEventListener('click', ()=>{ showScreen('settings'); });
+        btnInfo.addEventListener('click', ()=>{ showScreen('info'); });
         btnBackToStart.addEventListener('click', ()=>{ showScreen('start'); });
         btnToReady.addEventListener('click', ()=>{ ready.p1=false; ready.p2=false; updateReadyUI(); showScreen('ready'); });
         btnBackToChars.addEventListener('click', ()=>{ showScreen('chars'); });
+        btnBackToStartFromReady.addEventListener('click', ()=>{ showScreen('start'); });
 
         readyP1.addEventListener('click', ()=>{ ready.p1=!ready.p1; updateReadyUI(); checkBothReady(); });
         readyP2.addEventListener('click', ()=>{ ready.p2=!ready.p2; updateReadyUI(); checkBothReady(); });
@@ -220,6 +249,8 @@ More characters will be added later.
           restartRound();
           // focus canvas so keyboard controls go to game
           canvas.focus();
+          // recompute world dimensions in case canvas scale changed
+          WIDTH = canvas.width; HEIGHT = canvas.height; platforms[0].y = HEIGHT - 40; platforms[0].w = WIDTH;
         }
 
         // show initial start screen
@@ -246,7 +277,7 @@ More characters will be added later.
         }
 
         const player1 = new Player(200,'#63c2ff',{left:'KeyA',right:'KeyD',up:'KeyW',attack:'KeyS'});
-        const player2 = new Player(760,'#ff8b8b',{left:'ArrowLeft',right:'ArrowRight',up:'ArrowUp',attack:'ArrowDown'});
+        const player2 = new Player(900,'#ff8b8b',{left:'ArrowLeft',right:'ArrowRight',up:'ArrowUp',attack:'ArrowDown'});
         const players=[player1,player2];
 
         const keyMap={}; window.addEventListener('keydown',(e)=>{ 
@@ -281,7 +312,7 @@ More characters will be added later.
 
         let winner=null; let freeze=0;
         function restartRound(){ player1.x=200;player1.y=0;player1.vx=0;player1.vy=0;player1.health=player1.maxHealth;player1.stun=0;player1.jumpsLeft=2;player1.attackHasHit=false;player1.invuln=0;
-          player2.x=760;player2.y=0;player2.vx=0;player2.vy=0;player2.health=player2.maxHealth;player2.stun=0;player2.jumpsLeft=2;player2.attackHasHit=false;player2.invuln=0; winner=null; freeze=0; }
+          player2.x=900;player2.y=0;player2.vx=0;player2.vy=0;player2.health=player2.maxHealth;player2.stun=0;player2.jumpsLeft=2;player2.attackHasHit=false;player2.invuln=0; winner=null; freeze=0; }
 
         function resolvePlatformPenetration(entity){ const r=entity.rect(); for(const p of platforms){ if(r.x<p.x+p.w && r.x+r.w>p.x && r.y<p.y+p.h && r.y+r.h>p.y){ const penetration=(r.y+r.h)-p.y; if(penetration>4 && entity.vy>=0){ entity.y=p.y; entity.vy=Math.min(entity.vy,4); entity.onGround=true; } } } }
 
