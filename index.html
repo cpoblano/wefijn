@@ -30,6 +30,11 @@
     .menuNav button{background:transparent;border:0;color:#9fc;cursor:pointer;padding:6px 10px;border-radius:6px}
     .menuNav button.active{background:#1e88e5;color:#fff}
 
+    /* keybind UI */
+    .keybindRow{display:flex;gap:8px;align-items:center;margin-bottom:6px}
+    .keybtn{padding:6px 8px;border-radius:6px;border:1px solid #334;background:#071018;color:#9cf;cursor:pointer}
+    .keybtn.listening{background:#234;color:#fff}
+
     @media (max-width:900px){
       .wrap{flex-direction:column;align-items:center}
     }
@@ -109,17 +114,29 @@
           <label><input id="optFullscreen" type="checkbox"> Start fullscreen (placeholder)</label>
           <label><input id="optSound" type="checkbox" checked> Enable sound (placeholder)</label>
           <label>Canvas scale: <select id="canvasScale"><option value="1">1x</option><option value="1.25">1.25x</option><option value="1.5">1.5x</option></select></label>
-          <div style="margin-top:8px"><button id="btnSaveSettings" class="btn" type="button">Save</button></div>
+
+          <div style="margin-top:6px;border-top:1px solid #222;padding-top:8px">
+            <h3>Keybindings</h3>
+            <div style="display:flex;gap:18px;flex-wrap:wrap">
+              <div style="min-width:260px">
+                <strong>Player 1</strong>
+                <div id="kbP1"></div>
+                <div style="margin-top:6px"><button id="btnResetP1" class="btn ghost" type="button">Reset P1 Defaults</button></div>
+              </div>
+              <div style="min-width:260px">
+                <strong>Player 2</strong>
+                <div id="kbP2"></div>
+                <div style="margin-top:6px"><button id="btnResetP2" class="btn ghost" type="button">Reset P2 Defaults</button></div>
+              </div>
+            </div>
+            <div style="margin-top:8px"><button id="btnSaveSettings" class="btn" type="button">Save Settings</button></div>
+          </div>
         </div>
       </div>
 
       <div id="infoScreen" style="display:none">
-        <h2>Info & Controls</h2>
+        <h2>Info & Notes</h2>
         <div style="margin-top:8px;line-height:1.4">
-          <strong>Player 1</strong>
-          <pre style="background:#08121a;padding:8px;border-radius:6px;color:#9cf;">Move: A / D\nJump: W (double jump enabled)\nAttack: S</pre>
-          <strong>Player 2</strong>
-          <pre style="background:#08121a;padding:8px;border-radius:6px;color:#9cf;">Move: ← / →\nJump: ↑ (double jump enabled)\nAttack: ↓</pre>
           <strong>Notes</strong>
           <pre style="background:#08121a;padding:8px;border-radius:6px;color:#9cf;">First to reduce opponent to 0 health wins; press R to restart.\nNew moves: double jump and aerial attacks — down-air performs a downward slam.\nUse the Ready screen to begin the match.\nIf nothing appears: run a local server (python -m http.server) and open http://localhost:8000</pre>
         </div>
@@ -184,6 +201,71 @@
         const charsP2 = document.getElementById('charsP2');
         const selP1 = document.getElementById('selP1');
         const selP2 = document.getElementById('selP2');
+
+        // Keybind settings storage
+        const STORAGE_KEY = 'pf_settings_v1';
+        const defaultBindings = { p1:{left:'KeyA',right:'KeyD',up:'KeyW',attack:'KeyS'}, p2:{left:'ArrowLeft',right:'ArrowRight',up:'ArrowUp',attack:'ArrowDown'} };
+        let settings = { fullscreen:false, sound:true, scale:1, bindings: JSON.parse(JSON.stringify(defaultBindings)) };
+
+        function loadSettings(){ try{ const s = localStorage.getItem(STORAGE_KEY); if(s){ const parsed = JSON.parse(s); settings = Object.assign(settings, parsed); } }catch(e){ console.warn('Failed to load settings',e); }
+          // apply canvas scale if present
+          const canvasScale = document.getElementById('canvasScale'); canvasScale.value = settings.scale || 1; document.getElementById('optFullscreen').checked = !!settings.fullscreen; document.getElementById('optSound').checked = !!settings.sound;
+          // apply bindings to players (will be assigned later if players already exist)
+          renderKeybindUI();
+        }
+
+        function saveSettings(){ try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(settings)); console.log('Settings saved'); }catch(e){ console.warn('Failed to save settings',e); } }
+
+        // Helpers to show friendly key names
+        function humanKey(code){ if(!code) return ''; if(code.startsWith('Key')) return code.slice(3); if(code.startsWith('Digit')) return code.slice(5); if(code==='Space') return 'Space'; if(code.startsWith('Arrow')){ if(code==='ArrowLeft') return '←'; if(code==='ArrowRight') return '→'; if(code==='ArrowUp') return '↑'; if(code==='ArrowDown') return '↓'; }
+          return code; }
+
+        // Render keybind UI in settings
+        let awaiting = null; // {player:'p1'|'p2', action:'left'|'right'|'up'|'attack', btnEl}
+        function renderKeybindUI(){ const kbP1 = document.getElementById('kbP1'); const kbP2 = document.getElementById('kbP2'); kbP1.innerHTML=''; kbP2.innerHTML='';
+          const actions = ['left','right','up','attack'];
+          actions.forEach(a=>{
+            const row1 = document.createElement('div'); row1.className='keybindRow'; const label1 = document.createElement('div'); label1.style.width='80px'; label1.textContent = a; const btn1 = document.createElement('button'); btn1.className='keybtn'; btn1.type='button'; btn1.textContent = humanKey(settings.bindings.p1[a]); btn1.onclick = ()=> startCapture('p1',a,btn1);
+            row1.appendChild(label1); row1.appendChild(btn1); kbP1.appendChild(row1);
+
+            const row2 = document.createElement('div'); row2.className='keybindRow'; const label2 = document.createElement('div'); label2.style.width='80px'; label2.textContent = a; const btn2 = document.createElement('button'); btn2.className='keybtn'; btn2.type='button'; btn2.textContent = humanKey(settings.bindings.p2[a]); btn2.onclick = ()=> startCapture('p2',a,btn2);
+            row2.appendChild(label2); row2.appendChild(btn2); kbP2.appendChild(row2);
+          });
+        }
+
+        function startCapture(player, action, btnEl){ // indicate listening
+          if(awaiting) return; awaiting = { player, action, btnEl }; btnEl.classList.add('listening'); btnEl.textContent = 'Press a key...';
+        }
+
+        // Global keydown listener to capture binding when listening
+        window.addEventListener('keydown', (e)=>{
+          if(awaiting){ e.preventDefault(); const code = e.code; settings.bindings[awaiting.player][awaiting.action] = code; // update button text
+            awaiting.btnEl.classList.remove('listening'); awaiting.btnEl.textContent = humanKey(code); awaiting = null; renderKeybindUI(); return; }
+        }, { capture: true });
+
+        // Reset functions
+        document.getElementById('btnResetP1').addEventListener('click', ()=>{ settings.bindings.p1 = Object.assign({}, defaultBindings.p1); renderKeybindUI(); });
+        document.getElementById('btnResetP2').addEventListener('click', ()=>{ settings.bindings.p2 = Object.assign({}, defaultBindings.p2); renderKeybindUI(); });
+
+        document.getElementById('btnSaveSettings').addEventListener('click', ()=>{
+          // pick up toggles
+          settings.fullscreen = !!document.getElementById('optFullscreen').checked;
+          settings.sound = !!document.getElementById('optSound').checked;
+          settings.scale = parseFloat(document.getElementById('canvasScale').value) || 1;
+          // apply canvas scale
+          applyCanvasScale(settings.scale);
+          // persist and apply bindings to players
+          saveSettings(); applyBindingsToPlayers();
+        });
+
+        function applyCanvasScale(s){ // simple scale by changing canvas size while keeping CSS pixel ratio simple
+          if(!s || s===1) return; // for now only adjust canvas dimensions
+          canvas.width = Math.round(1100 * s); canvas.height = Math.round(620 * s); WIDTH = canvas.width; HEIGHT = canvas.height; // update platform sizes
+          platforms[0].y = HEIGHT - 40; platforms[0].w = WIDTH;
+        }
+
+        function applyBindingsToPlayers(){ try{ if(window.player1) player1.controls = Object.assign({}, settings.bindings.p1); if(window.player2) player2.controls = Object.assign({}, settings.bindings.p2); // re-render UI where needed
+            renderCharLists(); }catch(e){ console.warn('Failed to apply bindings',e); } }
 
         // Make non-default characters unknown and unselectable
         const characters = ['Default','???','???','???'];
@@ -251,10 +333,12 @@
           canvas.focus();
           // recompute world dimensions in case canvas scale changed
           WIDTH = canvas.width; HEIGHT = canvas.height; platforms[0].y = HEIGHT - 40; platforms[0].w = WIDTH;
+          // apply bindings to players when match starts
+          applyBindingsToPlayers();
         }
 
         // show initial start screen
-        showScreen('start');
+        loadSettings(); showScreen('start');
 
         // --- core game code ---
         class Player {
@@ -276,8 +360,9 @@
           getAttackHitbox(){ if(this.attackDuration>0 && this.attackType){ const offset=10; if(this.attackType==='down'){ const w=48,h=40; const hx=this.x, hy=this.y+6; return {x:hx-w/2,y:hy-h/2,w,h}; } else if(this.attackType==='up'){ const w=36,h=40; const hx=this.x, hy=this.y-this.h-10; return {x:hx-w/2,y:hy-h/2,w,h}; } else if(this.attackType==='forward'){ const w=44,h=28; const hx=this.x+this.facing*(this.w/2+offset+w/2), hy=this.y-this.h/2; return {x:hx-w/2,y:hy-h/2,w,h}; } else { const w=38,h=28; const hx=this.x+this.facing*(this.w/2+offset), hy=this.y-this.h/2; return {x:hx-w/2,y:hy-h/2,w,h}; } } return null; }
         }
 
-        const player1 = new Player(200,'#63c2ff',{left:'KeyA',right:'KeyD',up:'KeyW',attack:'KeyS'});
-        const player2 = new Player(900,'#ff8b8b',{left:'ArrowLeft',right:'ArrowRight',up:'ArrowUp',attack:'ArrowDown'});
+        // create players with current settings.bindings
+        window.player1 = new Player(200,'#63c2ff', Object.assign({}, settings.bindings.p1));
+        window.player2 = new Player(900,'#ff8b8b', Object.assign({}, settings.bindings.p2));
         const players=[player1,player2];
 
         const keyMap={}; window.addEventListener('keydown',(e)=>{ 
