@@ -21,7 +21,7 @@
   function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
 
   class Player {
-    constructor(x, color, controls) {
+    constructor(x, color, controls, opts = {}) {
       this.x = x;
       this.y = 0;
       this.w = 44;
@@ -43,6 +43,15 @@
       this.input = { left: false, right: false, up: false, attack: false };
 
       this.score = 0;
+
+      // sprite-related (optional)
+      this.spriteName = opts.spriteName || null; // name matches assets/characters/<name>.png + .json
+      this.sprite = null; // will be set after preload
+      this.currentAnim = 'idle';
+      this.animFrame = 0;
+      this.frameDuration = opts.frameDuration || 6;
+      this._animTimer = null;
+      this._animPlayOnce = false;
     }
 
     rect() {
@@ -103,12 +112,28 @@
 
       if (this.attackCooldown > 0) this.attackCooldown--;
       if (this.attackDuration > 0) this.attackDuration--;
+
+      // Animation state selection
+      if (this.attackDuration > 0) {
+        this.setAnimation('attack', { playOnce: true });
+      } else if (!this.onGround) {
+        this.setAnimation('jump');
+      } else if (Math.abs(this.vx) > 1) {
+        this.setAnimation('walk');
+      } else {
+        this.setAnimation('idle');
+      }
+
+      // Advance sprite animation timing if available
+      if (typeof updateSpriteAnimation === 'function') updateSpriteAnimation(this);
     }
 
     startAttack() {
       if (this.attackCooldown === 0 && this.attackDuration === 0 && !this.stun) {
         this.attackDuration = 12; // frames
         this.attackCooldown = 36; // frames before next
+        // mark that we want the attack animation to play once
+        this._animPlayOnce = true;
       }
     }
 
@@ -123,15 +148,23 @@
       }
       return null;
     }
+
+    setAnimation(name, { playOnce = false } = {}) {
+      if (this.currentAnim === name) return;
+      this.currentAnim = name;
+      this.animFrame = 0;
+      this._animTimer = null; // will be initialized by updateSpriteAnimation
+      if (playOnce) this._animPlayOnce = true;
+    }
   }
 
   // Controls mapping
   const player1 = new Player(200, '#63c2ff', {
     left: 'KeyA', right: 'KeyD', up: 'KeyW', attack: 'KeyS'
-  });
+  }, { spriteName: 'default' });
   const player2 = new Player(760, '#ff8b8b', {
     left: 'ArrowLeft', right: 'ArrowRight', up: 'ArrowUp', attack: 'ArrowDown'
-  });
+  }, { spriteName: 'default' });
 
   let players = [player1, player2];
 
@@ -168,8 +201,8 @@
   let freeze = 0;
 
   function restartRound() {
-    player1.x = 200; player1.y = 0; player1.vx = 0; player1.vy = 0; player1.health = player1.maxHealth; player1.stun = 0;
-    player2.x = 760; player2.y = 0; player2.vx = 0; player2.vy = 0; player2.health = player2.maxHealth; player2.stun = 0;
+    player1.x = 200; player1.y = 0; player1.vx = 0; player1.vy = 0; player1.health = player1.maxHealth; player1.stun = 0; player1.jumpsLeft = 2; player1.attackHasHit = false; player1.invuln = 0;
+    player2.x = 760; player2.y = 0; player2.vx = 0; player2.vy = 0; player2.health = player2.maxHealth; player2.stun = 0; player2.jumpsLeft = 2; player2.attackHasHit = false; player2.invuln = 0; 
     winner = null;
     freeze = 0;
   }
@@ -235,14 +268,22 @@
       ctx.fillStyle = 'rgba(0,0,0,0.25)';
       ctx.fillRect(r.x + 6, r.y + r.h + 4, r.w, 8);
 
-      // body
-      ctx.fillStyle = p.color;
-      ctx.fillRect(r.x, r.y, r.w, r.h);
+      // Try drawing sprite if available
+      let drawn = false;
+      if (typeof drawSprite === 'function' && p.sprite) {
+        try { drawn = drawSprite(ctx, p); } catch (e) { drawn = false; }
+      }
 
-      // face (simple)
-      ctx.fillStyle = '#111';
-      const eyeX = r.x + (p.facing === 1 ? r.w * 0.65 : r.w * 0.35);
-      ctx.fillRect(eyeX - 6, r.y + 12, 8, 8);
+      if (!drawn) {
+        // body fallback
+        ctx.fillStyle = p.color;
+        ctx.fillRect(r.x, r.y, r.w, r.h);
+
+        // face (simple)
+        ctx.fillStyle = '#111';
+        const eyeX = r.x + (p.facing === 1 ? r.w * 0.65 : r.w * 0.35);
+        ctx.fillRect(eyeX - 6, r.y + 12, 8, 8);
+      }
 
       // attack hitbox
       const hb = p.getAttackHitbox();
@@ -297,8 +338,24 @@
     requestAnimationFrame(loop);
   }
 
-  // Start
-  restartRound();
-  requestAnimationFrame(loop);
+  // Start: dynamically import sprite-loader, preload character sheets, then start game
+  async function start() {
+    try {
+      const mod = await import('./sprite-loader.js');
+      // Preload sprites for players that requested one
+      const loads = [];
+      for (const p of players) {
+        if (p.spriteName) loads.push(mod.Sprites.load(p.spriteName).then(s => { p.sprite = s; }));
+      }
+      await Promise.all(loads);
+    } catch (e) {
+      console.warn('Sprite loader or assets failed to load, continuing without sprites', e);
+    }
+
+    restartRound();
+    requestAnimationFrame(loop);
+  }
+
+  start();
 
 })();
