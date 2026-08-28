@@ -1,0 +1,30 @@
+{
+  "frameDuration": 6,
+  "animations": {
+    "idle": {
+      "frameDuration": 8,
+      "frames": [
+        { "x": 0, "y": 0, "w": 44, "h": 60 }
+      ]
+    },
+    "walk": {
+      "frameDuration": 5,
+      "frames": [
+        { "x": 0, "y": 60, "w": 44, "h": 60 },
+        { "x": 44, "y": 60, "w": 44, "h": 60 },
+        { "x": 88, "y": 60, "w": 44, "h": 60 }
+      ]
+    },
+    "jump": {
+      "frameDuration": 10,
+      "frames": [ { "x": 0, "y": 120, "w": 44, "h": 60 } ]
+    },
+    "attack": {
+      "frameDuration": 4,
+      "frames": [
+        { "x": 0, "y": 180, "w": 44, "h": 60 },
+        { "x": 44, "y": 180, "w": 44, "h": 60 }
+      ]
+    }
+  }
+}
