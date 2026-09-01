@@ -32,8 +32,7 @@
       this.facing = 1; // 1 -> right, -1 -> left
       this.color = color;
 
-      this.maxHealth = 100;
-      this.health = this.maxHealth;
+      this.damage = 0; // damage percentage (Smash Bros style)
 
       this.attackCooldown = 0;
       this.attackDuration = 0;
@@ -75,10 +74,10 @@
       this.x += this.vx;
       this.y += this.vy;
 
-      // World bounds
+      // World bounds - player falls off the stage
       this.x = clamp(this.x, this.w/2, WIDTH - this.w/2);
-      if (this.y > HEIGHT + 200) { // fell off — respawn
-        this.health = 0;
+      if (this.y > HEIGHT + 200) { // fell off — they lose!
+        this.y = HEIGHT + 200;
       }
 
       // Platform collisions
@@ -122,6 +121,10 @@
         return { x: hx - w/2, y: hy - h/2, w, h };
       }
       return null;
+    }
+
+    isOffScreen() {
+      return this.y > HEIGHT + 100;
     }
   }
 
@@ -168,8 +171,8 @@
   let freeze = 0;
 
   function restartRound() {
-    player1.x = 200; player1.y = 0; player1.vx = 0; player1.vy = 0; player1.health = player1.maxHealth; player1.stun = 0;
-    player2.x = 760; player2.y = 0; player2.vx = 0; player2.vy = 0; player2.health = player2.maxHealth; player2.stun = 0;
+    player1.x = 200; player1.y = 0; player1.vx = 0; player1.vy = 0; player1.damage = 0; player1.stun = 0;
+    player2.x = 760; player2.y = 0; player2.vx = 0; player2.vy = 0; player2.damage = 0; player2.stun = 0;
     winner = null;
     freeze = 0;
   }
@@ -180,9 +183,13 @@
     if (hitbox.x < d.x + d.w && hitbox.x + hitbox.w > d.x &&
         hitbox.y < d.y + d.h && hitbox.y + hitbox.h > d.y) {
       // hit!
-      const damage = 10;
-      defender.health = Math.max(0, defender.health - damage);
-      const knock = 8 + (100 - defender.health) / 12; // more knock with more damage
+      const baseDamage = 10;
+      defender.damage = Math.min(999, defender.damage + baseDamage);
+      
+      // Knockback scales with damage percentage (higher damage = more knockback)
+      const knockScale = 1 + (defender.damage / 100) * 0.8; // up to 1.8x at 100% damage
+      const knock = (8 + baseDamage / 2) * knockScale;
+      
       defender.vx = attacker.facing * knock;
       defender.vy = -6;
       defender.stun = 16;
@@ -201,10 +208,10 @@
     applyAttack(player1, player2, hb1);
     applyAttack(player2, player1, hb2);
 
-    // Win check
-    if (player1.health <= 0 && player2.health > 0) { winner = 2; player2.score++; }
-    else if (player2.health <= 0 && player1.health > 0) { winner = 1; player1.score++; }
-    else if (player1.health <= 0 && player2.health <= 0) { winner = 0; } // draw
+    // Win check - Smash Bros style: knock opponent off screen
+    if (player1.isOffScreen() && !player2.isOffScreen()) { winner = 2; player2.score++; }
+    else if (player2.isOffScreen() && !player1.isOffScreen()) { winner = 1; player1.score++; }
+    else if (player1.isOffScreen() && player2.isOffScreen()) { winner = 0; } // draw
   }
 
   // UI / Draw helpers
@@ -251,18 +258,11 @@
         ctx.fillRect(hb.x, hb.y, hb.w, hb.h);
       }
 
-      // health bar
-      const barX = (p === player1) ? 24 : WIDTH - 224;
-      ctx.fillStyle = '#000';
-      ctx.fillRect(barX, 16, 200, 16);
-      ctx.fillStyle = '#d32f2f';
-      ctx.fillRect(barX + 2, 18, (196 * p.health / p.maxHealth), 12);
-      ctx.strokeStyle = '#222';
-      ctx.strokeRect(barX, 16, 200, 16);
-
+      // damage percentage (Smash Bros style)
+      const damageX = (p === player1) ? 24 : WIDTH - 224;
       ctx.fillStyle = '#fff';
-      ctx.font = '12px sans-serif';
-      ctx.fillText(`P${players.indexOf(p)+1} HP: ${p.health}`, barX + 4, 14 + 6);
+      ctx.font = '14px sans-serif';
+      ctx.fillText(`P${players.indexOf(p)+1} Damage: ${Math.floor(p.damage)}%`, damageX, 32);
     }
 
     // center text
