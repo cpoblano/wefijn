@@ -40,7 +40,7 @@
     }
 
     /* Diagnostic overlay */
-    #diag { position:fixed; left:8px; right:8px; bottom:8px; background:rgba(0,0,0,0.85); color:#f88; padding:12px; border-radius:8px; font-family:monospace; display:none; z-index:1000; max-height:40vh; overflow:auto }
+    #diag { position:fixed; left:8px; right:8px; bottom:8px; background:rgba(0,0,0,0.85); color:#f88; padding:12px; border-radius:8px; font-family:monospace; display:none; z-index:1000; max-height:200px; overflow:auto; }
     #diag h3{margin:0 0 8px 0;color:#ffb3b3}
     #diag pre{white-space:pre-wrap;color:#ffc}
   </style>
@@ -137,8 +137,17 @@
       <div id="infoScreen" style="display:none">
         <h2>Info & Notes</h2>
         <div style="margin-top:8px;line-height:1.4">
-          <strong>Notes</strong>
-          <pre style="background:#08121a;padding:8px;border-radius:6px;color:#9cf;">First to reduce opponent to 0 health wins; press R to restart.\nNew moves: double jump and aerial attacks — down-air performs a downward slam.\nUse the Ready screen to begin the match.\nIf nothing appears: run a local server (python -m http.server) and open http://localhost:8000</pre>
+          <strong>Win Condition: Smash Bros Style</strong>
+          <pre style="background:#08121a;padding:8px;border-radius:6px;color:#9cf;">Knock your opponent off the stage to win!
+
+Each hit increases their damage percentage.
+Higher damage = more knockback = easier to KO.
+
+Controls (customizable in Settings):
+P1: A/D move, W jump, S attack
+P2: Arrows move, ↑ jump, ↓ attack
+
+Press R to restart a round.</pre>
         </div>
       </div>
 
@@ -154,271 +163,6 @@
     <div style="color:#f88;padding:12px;margin:12px;border:1px solid #522;background:#200">This demo requires JavaScript to run.</div>
   </noscript>
 
-  <script>
-    (function(){
-      function showError(err){ try{ var diag=document.getElementById('diag'); var t=document.getElementById('diag-text'); t.textContent=(err&&err.stack)?(''+err.stack):(''+err); diag.style.display='block'; console.error(err);}catch(e){console.error(e);} }
-      try{
-        console.log('Inline game.js loading');
-        const canvas = document.getElementById('game'); if(!canvas) throw new Error('Canvas element #game not found');
-        const ctx = canvas.getContext('2d'); if(!ctx) throw new Error('2D context not available');
-
-        // ensure canvas can receive focus so arrow keys target the game
-        canvas.setAttribute('tabindex','0');
-        canvas.focus();
-
-        let WIDTH = canvas.width, HEIGHT = canvas.height;
-        const GRAVITY = 0.9, FRICTION = 0.85;
-
-        const platforms = [ { x: 0, y: HEIGHT - 40, w: WIDTH, h: 40 }, { x: 240, y: 360, w: 200, h: 18 }, { x: 580, y: 300, w: 180, h: 18 } ];
-        function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
-
-        // --- Menu / Match flow state ---
-        let matchActive = false; // when true, game updates and input affect players
-        const overlay = document.getElementById('menuOverlay');
-        const startScreen = document.getElementById('startScreen');
-        const charSelect = document.getElementById('charSelect');
-        const readyScreen = document.getElementById('readyScreen');
-        const settingsScreen = document.getElementById('settingsScreen');
-        const infoScreen = document.getElementById('infoScreen');
-
-        const navStart = document.getElementById('navStart');
-        const navChars = document.getElementById('navChars');
-        const navReady = document.getElementById('navReady');
-        const navSettings = document.getElementById('navSettings');
-        const navInfo = document.getElementById('navInfo');
-
-        const btnStart = document.getElementById('btnStart');
-        const btnToReady = document.getElementById('btnToReady');
-        const btnBackToStart = document.getElementById('btnBackToStart');
-        const btnBackToChars = document.getElementById('btnBackToChars');
-        const btnBackToStartFromReady = document.getElementById('btnBackToStartFromReady');
-        const btnSettings = document.getElementById('btnSettings');
-        const btnInfo = document.getElementById('btnInfo');
-
-        const readyP1 = document.getElementById('readyP1');
-        const readyP2 = document.getElementById('readyP2');
-        const charsP1 = document.getElementById('charsP1');
-        const charsP2 = document.getElementById('charsP2');
-        const selP1 = document.getElementById('selP1');
-        const selP2 = document.getElementById('selP2');
-
-        // Keybind settings storage
-        const STORAGE_KEY = 'pf_settings_v1';
-        const defaultBindings = { p1:{left:'KeyA',right:'KeyD',up:'KeyW',attack:'KeyS'}, p2:{left:'ArrowLeft',right:'ArrowRight',up:'ArrowUp',attack:'ArrowDown'} };
-        let settings = { fullscreen:false, sound:true, scale:1, bindings: JSON.parse(JSON.stringify(defaultBindings)) };
-
-        function loadSettings(){ try{ const s = localStorage.getItem(STORAGE_KEY); if(s){ const parsed = JSON.parse(s); settings = Object.assign(settings, parsed); } }catch(e){ console.warn('Failed to load settings',e); }
-          // apply canvas scale if present
-          const canvasScale = document.getElementById('canvasScale'); canvasScale.value = settings.scale || 1; document.getElementById('optFullscreen').checked = !!settings.fullscreen; document.getElementById('optSound').checked = !!settings.sound;
-          // apply bindings to players (will be assigned later if players already exist)
-          renderKeybindUI();
-        }
-
-        function saveSettings(){ try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(settings)); console.log('Settings saved'); }catch(e){ console.warn('Failed to save settings',e); } }
-
-        // Helpers to show friendly key names
-        function humanKey(code){ if(!code) return ''; if(code.startsWith('Key')) return code.slice(3); if(code.startsWith('Digit')) return code.slice(5); if(code==='Space') return 'Space'; if(code.startsWith('Arrow')){ if(code==='ArrowLeft') return '←'; if(code==='ArrowRight') return '→'; if(code==='ArrowUp') return '↑'; if(code==='ArrowDown') return '↓'; }
-          return code; }
-
-        // Render keybind UI in settings
-        let awaiting = null; // {player:'p1'|'p2', action:'left'|'right'|'up'|'attack', btnEl}
-        function renderKeybindUI(){ const kbP1 = document.getElementById('kbP1'); const kbP2 = document.getElementById('kbP2'); kbP1.innerHTML=''; kbP2.innerHTML='';
-          const actions = ['left','right','up','attack'];
-          actions.forEach(a=>{
-            const row1 = document.createElement('div'); row1.className='keybindRow'; const label1 = document.createElement('div'); label1.style.width='80px'; label1.textContent = a; const btn1 = document.createElement('button'); btn1.className='keybtn'; btn1.type='button'; btn1.textContent = humanKey(settings.bindings.p1[a]); btn1.onclick = ()=> startCapture('p1',a,btn1);
-            row1.appendChild(label1); row1.appendChild(btn1); kbP1.appendChild(row1);
-
-            const row2 = document.createElement('div'); row2.className='keybindRow'; const label2 = document.createElement('div'); label2.style.width='80px'; label2.textContent = a; const btn2 = document.createElement('button'); btn2.className='keybtn'; btn2.type='button'; btn2.textContent = humanKey(settings.bindings.p2[a]); btn2.onclick = ()=> startCapture('p2',a,btn2);
-            row2.appendChild(label2); row2.appendChild(btn2); kbP2.appendChild(row2);
-          });
-        }
-
-        function startCapture(player, action, btnEl){ // indicate listening
-          if(awaiting) return; awaiting = { player, action, btnEl }; btnEl.classList.add('listening'); btnEl.textContent = 'Press a key...';
-        }
-
-        // Global keydown listener to capture binding when listening
-        window.addEventListener('keydown', (e)=>{
-          if(awaiting){ e.preventDefault(); const code = e.code; settings.bindings[awaiting.player][awaiting.action] = code; // update button text
-            awaiting.btnEl.classList.remove('listening'); awaiting.btnEl.textContent = humanKey(code); awaiting = null; renderKeybindUI(); return; }
-        }, { capture: true });
-
-        // Reset functions
-        document.getElementById('btnResetP1').addEventListener('click', ()=>{ settings.bindings.p1 = Object.assign({}, defaultBindings.p1); renderKeybindUI(); });
-        document.getElementById('btnResetP2').addEventListener('click', ()=>{ settings.bindings.p2 = Object.assign({}, defaultBindings.p2); renderKeybindUI(); });
-
-        document.getElementById('btnSaveSettings').addEventListener('click', ()=>{
-          // pick up toggles
-          settings.fullscreen = !!document.getElementById('optFullscreen').checked;
-          settings.sound = !!document.getElementById('optSound').checked;
-          settings.scale = parseFloat(document.getElementById('canvasScale').value) || 1;
-          // apply canvas scale
-          applyCanvasScale(settings.scale);
-          // persist and apply bindings to players
-          saveSettings(); applyBindingsToPlayers();
-        });
-
-        function applyCanvasScale(s){ // simple scale by changing canvas size while keeping CSS pixel ratio simple
-          if(!s || s===1) return; // for now only adjust canvas dimensions
-          canvas.width = Math.round(1100 * s); canvas.height = Math.round(620 * s); WIDTH = canvas.width; HEIGHT = canvas.height; // update platform sizes
-          platforms[0].y = HEIGHT - 40; platforms[0].w = WIDTH;
-        }
-
-        function applyBindingsToPlayers(){ try{ if(window.player1) player1.controls = Object.assign({}, settings.bindings.p1); if(window.player2) player2.controls = Object.assign({}, settings.bindings.p2); // re-render UI where needed
-            renderCharLists(); }catch(e){ console.warn('Failed to apply bindings',e); } }
-
-        // Make non-default characters unknown and unselectable
-        const characters = ['Default','???','???','???'];
-        let selection = { p1: 0, p2: 0 };
-        let ready = { p1: false, p2: false };
-
-        function renderCharLists(){
-          charsP1.innerHTML=''; charsP2.innerHTML='';
-          characters.forEach((c,i)=>{
-            const el1 = document.createElement('div');
-            el1.className = 'char' + (i===selection.p1 ? ' selected' : '') + (i===0 ? '' : ' locked');
-            el1.textContent = c;
-            // only make the default character selectable
-            if(i===0){ el1.onclick = ()=>{ selection.p1 = i; selP1.textContent = c; renderCharLists(); }; }
-            else { el1.setAttribute('title','Locked: character not implemented'); }
-            charsP1.appendChild(el1);
-
-            const el2 = document.createElement('div');
-            el2.className = 'char' + (i===selection.p2 ? ' selected' : '') + (i===0 ? '' : ' locked');
-            el2.textContent = c;
-            if(i===0){ el2.onclick = ()=>{ selection.p2 = i; selP2.textContent = c; renderCharLists(); }; }
-            else { el2.setAttribute('title','Locked: character not implemented'); }
-            charsP2.appendChild(el2);
-          });
-          selP1.textContent = characters[selection.p1]; selP2.textContent = characters[selection.p2];
-        }
-        renderCharLists();
-
-        function activateNav(button){ [navStart,navChars,navReady,navSettings,navInfo].forEach(b=>b.classList.remove('active')); button.classList.add('active'); }
-        function showScreen(which){ startScreen.style.display='none'; charSelect.style.display='none'; readyScreen.style.display='none'; settingsScreen.style.display='none'; infoScreen.style.display='none';
-          if(which==='start'){ activateNav(navStart); startScreen.style.display='block'; overlay.style.display='flex'; }
-          else if(which==='chars'){ activateNav(navChars); charSelect.style.display='block'; overlay.style.display='flex'; }
-          else if(which==='ready'){ activateNav(navReady); readyScreen.style.display='block'; overlay.style.display='flex'; }
-          else if(which==='settings'){ activateNav(navSettings); settingsScreen.style.display='block'; overlay.style.display='flex'; }
-          else if(which==='info'){ activateNav(navInfo); infoScreen.style.display='block'; overlay.style.display='flex'; }
-          else overlay.style.display='none';
-        }
-
-        navStart.addEventListener('click', ()=> showScreen('start'));
-        navChars.addEventListener('click', ()=> showScreen('chars'));
-        navReady.addEventListener('click', ()=> showScreen('ready'));
-        navSettings.addEventListener('click', ()=> showScreen('settings'));
-        navInfo.addEventListener('click', ()=> showScreen('info'));
-
-        btnStart.addEventListener('click', ()=>{ showScreen('chars'); });
-        btnSettings.addEventListener('click', ()=>{ showScreen('settings'); });
-        btnInfo.addEventListener('click', ()=>{ showScreen('info'); });
-        btnBackToStart.addEventListener('click', ()=>{ showScreen('start'); });
-        btnToReady.addEventListener('click', ()=>{ ready.p1=false; ready.p2=false; updateReadyUI(); showScreen('ready'); });
-        btnBackToChars.addEventListener('click', ()=>{ showScreen('chars'); });
-        btnBackToStartFromReady.addEventListener('click', ()=>{ showScreen('start'); });
-
-        readyP1.addEventListener('click', ()=>{ ready.p1=!ready.p1; updateReadyUI(); checkBothReady(); });
-        readyP2.addEventListener('click', ()=>{ ready.p2=!ready.p2; updateReadyUI(); checkBothReady(); });
-
-        function updateReadyUI(){ readyP1.textContent = ready.p1 ? 'Ready' : 'Not Ready'; readyP1.className = ready.p1 ? 'btn' : 'btn ghost';
-          readyP2.textContent = ready.p2 ? 'Ready' : 'Not Ready'; readyP2.className = ready.p2 ? 'btn' : 'btn ghost'; }
-
-        function checkBothReady(){ if(ready.p1 && ready.p2){ startMatch(); } }
-
-        function startMatch(){ overlay.style.display='none'; matchActive = true; // apply selected characters if you want later
-          // reset players and start
-          restartRound();
-          // focus canvas so keyboard controls go to game
-          canvas.focus();
-          // recompute world dimensions in case canvas scale changed
-          WIDTH = canvas.width; HEIGHT = canvas.height; platforms[0].y = HEIGHT - 40; platforms[0].w = WIDTH;
-          // apply bindings to players when match starts
-          applyBindingsToPlayers();
-        }
-
-        // show initial start screen
-        loadSettings(); showScreen('start');
-
-        // --- core game code ---
-        class Player {
-          constructor(x, color, controls){
-            this.x=x; this.y=0; this.w=44; this.h=60; this.vx=0; this.vy=0; this.onGround=false; this.facing=1; this.color=color;
-            this.maxHealth=100; this.health=this.maxHealth; this.attackCooldown=0; this.attackDuration=0; this.attackType=null; this.stun=0;
-            this.controls=controls; this.input={left:false,right:false,up:false,attack:false}; this.score=0; this.jumpsLeft=2; this.attackHasHit=false; this.invuln=0;
-          }
-          rect(){return {x:this.x-this.w/2,y:this.y-this.h,w:this.w,h:this.h};}
-          land(){ this.onGround=true; this.jumpsLeft=2; }
-          jump(){ if(this.stun) return; if(this.onGround){ this.vy=-18; this.onGround=false; this.jumpsLeft=1; } else if(this.jumpsLeft>0){ this.vy=-16; this.jumpsLeft--; } }
-          update(){ if(this.invuln>0) this.invuln--; if(this.stun>0) this.stun--; if(!this.stun){ if(this.input.left){ this.vx=clamp(this.vx-0.9,-8,8); this.facing=-1; } else if(this.input.right){ this.vx=clamp(this.vx+0.9,-8,8); this.facing=1; } else this.vx*=FRICTION; } else { this.vx*=0.95; }
-            this.vy+=GRAVITY; this.vy=clamp(this.vy,-30,40); this.x+=this.vx; this.y+=this.vy; this.x=clamp(this.x,this.w/2,WIDTH-this.w/2); if(this.y>HEIGHT+200) this.health=0;
-            const prevOnGround=this.onGround; this.onGround=false; const r=this.rect(); for(const p of platforms){ if(r.x<p.x+p.w && r.x+r.w>p.x && r.y<p.y+p.h && r.y+r.h>p.y){ if(this.vy>=0 && (r.y+r.h)-this.vy<=p.y+p.h){ this.y=p.y; this.vy=0; this.onGround=true; } else { if(r.x<p.x) this.x=p.x-this.w/2; else this.x=p.x+p.w+this.w/2; this.vx=0; } } }
-            if(this.onGround && !prevOnGround) this.land(); if(this.attackCooldown>0) this.attackCooldown--; if(this.attackDuration>0) this.attackDuration--; if(this.attackDuration===0){ this.attackType=null; this.attackHasHit=false; }
-          }
-          startAttack(){ if(this.attackCooldown===0 && this.attackDuration===0 && !this.stun){ let type='neutral'; if(!this.onGround){ if(this.vy>3) type='down'; else if(this.vy<-2) type='up'; else if(Math.abs(this.vx)>1) type='forward'; else type='neutral'; } else { if(this.input.left||this.input.right) type='forward'; else type='neutral'; }
-              this.attackType=type; this.attackHasHit=false; if(type==='down'){ this.attackDuration=20; this.attackCooldown=48; } else if(type==='up'){ this.attackDuration=14; this.attackCooldown=40; } else if(type==='forward'){ this.attackDuration=14; this.attackCooldown=36; } else { this.attackDuration=12; this.attackCooldown=36; } } }
-          getAttackHitbox(){ if(this.attackDuration>0 && this.attackType){ const offset=10; if(this.attackType==='down'){ const w=48,h=40; const hx=this.x, hy=this.y+6; return {x:hx-w/2,y:hy-h/2,w,h}; } else if(this.attackType==='up'){ const w=36,h=40; const hx=this.x, hy=this.y-this.h-10; return {x:hx-w/2,y:hy-h/2,w,h}; } else if(this.attackType==='forward'){ const w=44,h=28; const hx=this.x+this.facing*(this.w/2+offset+w/2), hy=this.y-this.h/2; return {x:hx-w/2,y:hy-h/2,w,h}; } else { const w=38,h=28; const hx=this.x+this.facing*(this.w/2+offset), hy=this.y-this.h/2; return {x:hx-w/2,y:hy-h/2,w,h}; } } return null; }
-        }
-
-        // create players with current settings.bindings
-        window.player1 = new Player(200,'#63c2ff', Object.assign({}, settings.bindings.p1));
-        window.player2 = new Player(900,'#ff8b8b', Object.assign({}, settings.bindings.p2));
-        const players=[player1,player2];
-
-        const keyMap={}; window.addEventListener('keydown',(e)=>{ 
-          // prevent arrow keys from scrolling the page
-          if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) {
-            e.preventDefault();
-          }
-
-          if(e.code==='KeyR') restartRound();
-
-          // If menu is open (not matchActive), allow menu keyboard shortcuts
-          if(!matchActive){
-            // If ready screen is visible, let attack keys toggle ready for each player
-            if(readyScreen.style.display==='block' && !keyMap[e.code]){
-              if(e.code===player1.controls.attack){ ready.p1=!ready.p1; updateReadyUI(); checkBothReady(); }
-              if(e.code===player2.controls.attack){ ready.p2=!ready.p2; updateReadyUI(); checkBothReady(); }
-            }
-          } else {
-            // Gameplay hotkeys (only when matchActive)
-            if(!keyMap[e.code]){
-              if(e.code===player1.controls.up) player1.jump();
-              if(e.code===player2.controls.up) player2.jump();
-              if(e.code===player1.controls.attack) player1.startAttack();
-              if(e.code===player2.controls.attack) player2.startAttack();
-            }
-          }
-
-          keyMap[e.code]=true; updateInputsFromKeys();
-        },{passive:false});
-        window.addEventListener('keyup',(e)=>{ keyMap[e.code]=false; updateInputsFromKeys(); });
-        function updateInputsFromKeys(){ for(const p of players){ p.input.left=!!keyMap[p.controls.left]; p.input.right=!!keyMap[p.controls.right]; } }
-
-        let winner=null; let freeze=0;
-        function restartRound(){ player1.x=200;player1.y=0;player1.vx=0;player1.vy=0;player1.health=player1.maxHealth;player1.stun=0;player1.jumpsLeft=2;player1.attackHasHit=false;player1.invuln=0;
-          player2.x=900;player2.y=0;player2.vx=0;player2.vy=0;player2.health=player2.maxHealth;player2.stun=0;player2.jumpsLeft=2;player2.attackHasHit=false;player2.invuln=0; winner=null; freeze=0; }
-
-        function resolvePlatformPenetration(entity){ const r=entity.rect(); for(const p of platforms){ if(r.x<p.x+p.w && r.x+r.w>p.x && r.y<p.y+p.h && r.y+r.h>p.y){ const penetration=(r.y+r.h)-p.y; if(penetration>4 && entity.vy>=0){ entity.y=p.y; entity.vy=Math.min(entity.vy,4); entity.onGround=true; } } } }
-
-        function applyAttack(attacker,defender,hitbox){ if(!hitbox) return; if(attacker.attackHasHit) return; if(defender.invuln&&defender.invuln>0) return; const d=defender.rect(); if(hitbox.x<d.x+d.w&&hitbox.x+hitbox.w>d.x&&hitbox.y<d.y+d.h&&hitbox.y+hitbox.h>d.y){ let damage=3,knock=18,vely=-6; if(attacker.attackType==='down'){ damage=5;knock=22;vely=10; } else if(attacker.attackType==='up'){ damage=4;knock=16;vely=-10; } else if(attacker.attackType==='forward'){ damage=4;knock=20;vely=-8; } else { damage=3;knock=18;vely=-6; } defender.vx=clamp(attacker.facing*knock,-36,36); defender.vy=clamp(vely,-40,40); defender.health=Math.max(0,defender.health-damage); defender.stun=12; defender.invuln=22; attacker.attackHasHit=true; freeze=2; resolvePlatformPenetration(defender); } }
-
-        function update(){ if(!matchActive) return; if(freeze>0){ freeze--; return;} for(const p of players) p.update(); const hb1=player1.getAttackHitbox(); const hb2=player2.getAttackHitbox(); applyAttack(player1,player2,hb1); applyAttack(player2,player1,hb2); if(player1.health<=0&&player2.health>0){ winner=2; player2.score++; matchActive=false; showScreen('start'); } else if(player2.health<=0&&player1.health>0){ winner=1; player1.score++; matchActive=false; showScreen('start'); } else if(player1.health<=0&&player2.health<=0){ winner=0; matchActive=false; showScreen('start'); } }
-
-        function drawRect(r,color){ ctx.fillStyle=color; ctx.fillRect(r.x,r.y,r.w,r.h); }
-        function draw(){ ctx.clearRect(0,0,WIDTH,HEIGHT); ctx.fillStyle='#15202b'; ctx.fillRect(0,0,WIDTH,HEIGHT); for(const p of platforms){ drawRect(p,'#37474f'); ctx.fillStyle='#4b5b66'; ctx.fillRect(p.x,p.y,p.w,4); }
-          for(const p of players){ const r=p.rect(); ctx.fillStyle='rgba(0,0,0,0.25)'; ctx.fillRect(r.x+6,r.y+r.h+4,r.w,8); ctx.fillStyle=p.color; ctx.fillRect(r.x,r.y,r.w,r.h); ctx.fillStyle='#111'; const eyeX=r.x+(p.facing===1? r.w*0.65: r.w*0.35); ctx.fillRect(eyeX-6,r.y+12,8,8); const hb=p.getAttackHitbox(); if(hb){ if(p.attackType==='down') ctx.fillStyle='rgba(255,0,80,0.45)'; else if(p.attackType==='up') ctx.fillStyle='rgba(120,255,120,0.35)'; else ctx.fillStyle='rgba(255,255,0,0.35)'; ctx.fillRect(hb.x,hb.y,hb.w,hb.h); }
-            const barX=(p===player1)?24:WIDTH-224; ctx.fillStyle='#000'; ctx.fillRect(barX,16,200,16); ctx.fillStyle='#d32f2f'; ctx.fillRect(barX+2,18,(196*p.health/p.maxHealth),12); ctx.strokeStyle='#222'; ctx.strokeRect(barX,16,200,16); ctx.fillStyle='#fff'; ctx.font='12px sans-serif'; ctx.fillText('P'+(players.indexOf(p)+1)+' HP: '+p.health,barX+4,20); ctx.fillStyle='#fff'; ctx.font='11px monospace'; ctx.fillText('Jumps: '+p.jumpsLeft+'  ATK:'+ (p.attackType||'-'), r.x, r.y-8); }
-          if(winner!==null){ ctx.fillStyle='#fff'; ctx.font='36px sans-serif'; let t='Draw!'; if(winner===1) t='Player 1 Wins!'; else if(winner===2) t='Player 2 Wins!'; ctx.fillText(t, WIDTH/2-ctx.measureText(t).width/2, HEIGHT/2-6); ctx.font='16px sans-serif'; const s='Press R to restart'; ctx.fillText(s, WIDTH/2-ctx.measureText(s).width/2, HEIGHT/2+26); }
-          ctx.fillStyle='#fff'; ctx.font='14px sans-serif'; ctx.fillText('Score P1: '+player1.score,24,HEIGHT-16); ctx.fillText('Score P2: '+player2.score,WIDTH-120,HEIGHT-16);
-        }
-
-        let last=0; function loop(ts){ const dt=ts-last; last=ts; update(); draw(); requestAnimationFrame(loop); }
-        restartRound(); requestAnimationFrame(loop);
-
-        console.log('Inline game.js initialized');
-      }catch(err){ showError(err); }
-    })();
-  </script>
+  <script src="src/game.js"></script>
 </body>
 </html>
